@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Tabeeb</title>
+<meta name="theme-color" content="#1B1A1F" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ══════════════════════════════════════════════════
+   Every colour is a token. Swap the [data-theme] block
+   and the whole app re-skins — nothing below hardcodes a hue.
+   ══════════════════════════════════════════════════ */
+
+/* ── GRAPHITE — warm charcoal, no green in the field ── */
+[data-theme="graphite"]{
+  --ink:#1B1A1F; --well:#121116; --surface:#25242B; --surface-2:#2F2E36;
+  --fg:#F3F1EC; --fg-2:#A9A6B0; --fg-3:#757280;
+  --accent:#F0A93C; --accent-deep:#C9862A; --on-accent:#2A1B05;
+  --pos:#4FC79B; --warn:#E4715A;
+  --tint-pos:rgba(79,199,155,.13); --tint-warn:rgba(228,113,90,.13);
+  --nav-bg:rgba(37,36,43,.93); --nav-ring:rgba(243,241,236,.07);
+  --cap-a:#6E6B78; --cap-b:#4A4853;
+  --sh-card:0 16px 34px -20px rgba(0,0,0,.9);
+  --sh-nav:0 18px 40px -12px rgba(0,0,0,.8);
+  --well-in:inset 0 2px 7px rgba(0,0,0,.6);
+  --grain:.035;
+}
+/* ── IVORY — light, warm paper ── */
+[data-theme="ivory"]{
+  --ink:#F5F2EA; --well:#E6E1D4; --surface:#FFFFFF; --surface-2:#F0ECE1;
+  --fg:#1E1C19; --fg-2:#5E5A52; --fg-3:#8A857A;
+  --accent:#E09A2B; --accent-deep:#B87A16; --on-accent:#2A1B05;
+  --pos:#1A7F5C; --warn:#BF4A2E;
+  --tint-pos:rgba(26,127,92,.1); --tint-warn:rgba(191,74,46,.1);
+  --nav-bg:rgba(255,255,255,.94); --nav-ring:rgba(30,28,25,.08);
+  --cap-a:#CBC5B6; --cap-b:#ABA598;
+  --sh-card:0 10px 26px -16px rgba(60,52,36,.5);
+  --sh-nav:0 14px 34px -12px rgba(60,52,36,.35);
+  --well-in:inset 0 2px 6px rgba(120,110,88,.25);
+  --grain:.02;
+}
+/* ── PLUM — deep aubergine ── */
+[data-theme="plum"]{
+  --ink:#1E1622; --well:#150F18; --surface:#2A2030; --surface-2:#362A3D;
+  --fg:#F4EFF3; --fg-2:#B3A5B8; --fg-3:#7E7186;
+  --accent:#FFB067; --accent-deep:#D98A45; --on-accent:#33200A;
+  --pos:#6FD3AE; --warn:#FF7E7E;
+  --tint-pos:rgba(111,211,174,.14); --tint-warn:rgba(255,126,126,.13);
+  --nav-bg:rgba(42,32,48,.93); --nav-ring:rgba(244,239,243,.08);
+  --cap-a:#79697F; --cap-b:#544860;
+  --sh-card:0 16px 34px -20px rgba(0,0,0,.9);
+  --sh-nav:0 18px 40px -12px rgba(0,0,0,.8);
+  --well-in:inset 0 2px 7px rgba(0,0,0,.6);
+  --grain:.04;
+}
+
+:root{
+  --r-sm:10px; --r-md:16px; --r-lg:22px; --r-full:999px;
+  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:20px; --s-6:24px; --s-8:32px;
+  --fd:'Bricolage Grotesque',system-ui,sans-serif;
+  --fu:'Instrument Sans',system-ui,-apple-system,sans-serif;
+  --fur:'Noto Naskh Arabic',serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--fu);background:#0B0B0E;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  -webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:6px}
+
+.app{
+  width:100%;max-width:420px;height:100dvh;max-height:880px;
+  background:var(--ink);color:var(--fg);
+  display:flex;flex-direction:column;position:relative;overflow:hidden;
+  transition:background .35s ease, color .35s ease;
+}
+@media (min-width:440px){
+  .app{border-radius:42px;height:830px;max-height:94vh;
+       box-shadow:0 50px 100px -25px rgba(0,0,0,.85), 0 0 0 9px #2A2A30}
+}
+.grain{position:absolute;inset:0;opacity:var(--grain);pointer-events:none;
+       z-index:3;mix-blend-mode:overlay}
+.scroll{flex:1;overflow-y:auto;overscroll-behavior-y:contain;
+        padding-bottom:104px;scrollbar-width:none;position:relative;z-index:1}
+.scroll::-webkit-scrollbar{display:none}
+
+.i{width:20px;height:20px;flex-shrink:0;stroke:currentColor;fill:none;
+   stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.i--sm{width:14px;height:14px;stroke-width:2}
+.i--lg{width:25px;height:25px}
+[dir="rtl"] .i--flip{transform:scaleX(-1)}
+
+/* ─── Top ─── */
+.statusbar{display:flex;justify-content:space-between;align-items:center;
+  padding:calc(var(--s-3) + env(safe-area-inset-top,0px)) var(--s-6) 0;
+  font-family:var(--fd);font-size:12.5px;font-weight:500;color:var(--fg-3);
+  letter-spacing:.3px;flex-shrink:0;position:relative;z-index:2}
+.statusbar__icons{display:flex;align-items:center;gap:6px}
+
+.top{display:flex;align-items:center;justify-content:space-between;
+     gap:var(--s-3);padding:var(--s-5) var(--s-5) 0}
+.top__hello{font-size:12.5px;color:var(--fg-3);font-weight:500}
+.top__name{font-family:var(--fd);font-size:19px;font-weight:600;
+           letter-spacing:-.4px;margin-top:2px}
+.top__side{display:flex;align-items:center;gap:var(--s-2)}
+.lang{display:flex;background:var(--surface);border-radius:var(--r-full);
+      padding:2px;position:relative}
+.lang__thumb{position:absolute;inset-block:2px;inset-inline-start:2px;
+  width:calc(50% - 2px);background:var(--fg);border-radius:var(--r-full);
+  transition:transform .3s cubic-bezier(.34,1.4,.64,1)}
+.lang[data-active="ur"] .lang__thumb{transform:translateX(100%)}
+[dir="rtl"] .lang[data-active="ur"] .lang__thumb{transform:translateX(-100%)}
+.lang button{position:relative;z-index:1;min-width:36px;min-height:29px;
+  border-radius:var(--r-full);font-size:12px;font-weight:600;
+  color:var(--fg-3);transition:color .2s}
+.lang button[aria-pressed="true"]{color:var(--ink)}
+.lang button[lang="ur"]{font-family:var(--fur);font-size:13px}
+.avatar{width:37px;height:37px;border-radius:var(--r-full);
+  background:var(--surface-2);color:var(--fg);display:grid;place-items:center;
+  font-family:var(--fd);font-weight:700;font-size:12.5px;letter-spacing:.3px;
+  transition:transform .16s}
+.avatar:active{transform:scale(.93)}
+
+/* ─── Streak: trimmed right down ─── */
+.streak{display:inline-flex;align-items:center;gap:6px;
+  margin:var(--s-4) var(--s-5) 0;padding:4px 10px;border-radius:var(--r-full);
+  background:var(--tint-pos);color:var(--pos);
+  font-size:11px;font-weight:600;letter-spacing:.1px}
+.streak__d{width:5px;height:5px;border-radius:var(--r-full);background:currentColor}
+
+/* ─── Hero ─── */
+.hero{padding:var(--s-3) var(--s-5) var(--s-5)}
+.hero__eyebrow{font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.2px}
+.hero__med{font-family:var(--fd);font-size:32px;font-weight:500;
+  letter-spacing:-1.3px;line-height:1.05;margin-top:5px}
+.hero__meta{font-size:13px;color:var(--fg-2);margin-top:6px;font-weight:500}
+
+/* the blister strip — pockets cut down from 123px tall to 58px */
+.blister{display:flex;gap:8px;margin-top:var(--s-4);
+  background:var(--surface);border-radius:var(--r-lg);
+  padding:var(--s-3) var(--s-3) 10px;box-shadow:var(--sh-card)}
+.well{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;
+  transition:transform .18s}
+.well:active{transform:scale(.94)}
+.pocket{width:100%;height:58px;border-radius:11px;background:var(--well);
+  display:grid;place-items:center;position:relative;
+  box-shadow:var(--well-in);transition:box-shadow .3s}
+.cap{width:15px;height:30px;border-radius:var(--r-full);position:relative;
+  background:linear-gradient(165deg,var(--cap-a),var(--cap-b));transition:background .35s}
+.cap::after{content:"";position:absolute;inset-inline:0;top:50%;height:1.4px;
+  background:rgba(0,0,0,.28)}
+.well__t{font-family:var(--fd);font-size:11px;font-weight:600;color:var(--fg-3);
+  font-variant-numeric:tabular-nums;letter-spacing:.2px;transition:color .3s}
+
+.well[data-state="taken"] .cap{display:none}
+.well[data-state="taken"] .pocket::after{content:"";width:15px;height:15px;
+  border-radius:2px;background:var(--pos);
+  -webkit-mask:no-repeat center/contain var(--tick);mask:no-repeat center/contain var(--tick)}
+.well[data-state="taken"] .well__t{color:var(--pos)}
+:root{--tick:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'><path d='m5 12.5 4.5 4.5L19 7.5'/></svg>")}
+
+.well[data-state="due"] .cap{background:linear-gradient(165deg,var(--accent),var(--accent-deep))}
+.well[data-state="due"] .pocket{box-shadow:var(--well-in), 0 0 0 2px var(--accent)}
+.well[data-state="due"] .well__t{color:var(--accent)}
+
+/* ─── Actions ─── */
+.acts{display:flex;gap:var(--s-2);margin-top:var(--s-4)}
+.take{flex:1;min-height:52px;border-radius:var(--r-full);
+  background:var(--accent);color:var(--on-accent);
+  font-family:var(--fd);font-size:15.5px;font-weight:600;letter-spacing:-.2px;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:var(--sh-card);transition:transform .16s}
+.take:active{transform:scale(.96)}
+.snooze{width:52px;height:52px;border-radius:var(--r-full);
+  background:var(--surface);color:var(--fg-2);display:grid;place-items:center;
+  transition:transform .16s}
+.snooze:active{transform:scale(.92)}
+
+.flagline{display:flex;align-items:center;gap:8px;width:100%;
+  margin-top:var(--s-3);padding:10px var(--s-3);text-align:start;
+  background:var(--tint-warn);border-radius:var(--r-sm);
+  color:var(--warn);transition:filter .16s}
+.flagline:active{filter:brightness(1.15)}
+.flagline__t{flex:1;font-size:12.5px;font-weight:500;line-height:1.35}
+.app[data-alert="none"] .flagline{display:none}
+
+/* ─── Records ─── */
+.sect{padding:0 var(--s-5) var(--s-4)}
+.sect__head{display:flex;align-items:baseline;justify-content:space-between;
+  gap:var(--s-3);margin-bottom:var(--s-3)}
+.sect__title{font-family:var(--fd);font-size:16px;font-weight:600;letter-spacing:-.3px}
+.sect__link{font-size:12.5px;font-weight:600;color:var(--fg-3);
+  display:inline-flex;align-items:center;gap:2px;padding:4px;border-radius:var(--r-sm)}
+
+.rec{display:flex;align-items:center;gap:var(--s-3);width:100%;
+  background:var(--surface);border-radius:var(--r-md);
+  padding:11px var(--s-3);text-align:start;transition:transform .16s,background .16s}
+.rec + .rec{margin-top:6px}
+.rec:active{transform:scale(.985);background:var(--surface-2)}
+.rec__icon{width:33px;height:33px;border-radius:9px;display:grid;
+  place-items:center;flex-shrink:0;background:var(--surface-2);color:var(--fg-2)}
+.rec__icon .i{width:17px;height:17px}
+.rec__body{flex:1;min-width:0}
+.rec__title{font-size:14px;font-weight:600;letter-spacing:-.1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec__sub{font-size:11.5px;color:var(--fg-3);margin-top:2px}
+.rec__flag{font-size:10.5px;font-weight:700;color:var(--warn);
+  background:var(--tint-warn);padding:3px 8px;border-radius:var(--r-sm);flex-shrink:0}
+.rec__chev{color:var(--fg-3);opacity:.6;flex-shrink:0}
+
+/* ─── Nav ─── */
+.nav{position:absolute;inset-inline:var(--s-4);z-index:2;
+  bottom:calc(var(--s-4) + env(safe-area-inset-bottom,0px));
+  height:64px;background:var(--nav-bg);backdrop-filter:blur(22px);
+  border-radius:var(--r-full);display:flex;align-items:center;
+  justify-content:space-around;padding:0 var(--s-2);
+  box-shadow:var(--sh-nav), 0 0 0 1px var(--nav-ring)}
+.nav__item{display:grid;place-items:center;width:45px;height:45px;
+  border-radius:var(--r-full);color:var(--fg-3);transition:color .18s,background .18s}
+.nav__item[aria-current="page"]{color:var(--ink);background:var(--fg)}
+.nav__add{width:50px;height:50px;border-radius:var(--r-full);
+  background:var(--accent);color:var(--on-accent);display:grid;place-items:center;
+  box-shadow:var(--sh-card);transition:transform .16s}
+.nav__add:active{transform:scale(.9)}
+
+/* ─── Urdu ─── */
+[dir="rtl"]{font-family:var(--fur)}
+[dir="rtl"] .top__name,[dir="rtl"] .hero__med,[dir="rtl"] .sect__title,
+[dir="rtl"] .rec__title,[dir="rtl"] .take,[dir="rtl"] .flagline__t,
+[dir="rtl"] .streak{font-family:var(--fur);letter-spacing:0}
+[dir="rtl"] .hero__med{font-size:26px}
+[dir="rtl"] .rec__sub,[dir="rtl"] .flagline__t{line-height:1.8}
+.num{direction:ltr;unicode-bidi:isolate}
+
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.streak,.hero,.sect{animation:rise .5s cubic-bezier(.22,1,.36,1) both}
+.hero{animation-delay:.06s}
+.sect{animation-delay:.14s}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ─── DEV ONLY — delete this block and the .picker markup before shipping ─── */
+.picker{position:fixed;top:14px;left:14px;z-index:50;display:flex;gap:6px;
+  background:rgba(20,20,24,.85);backdrop-filter:blur(10px);
+  padding:6px;border-radius:999px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.picker button{width:26px;height:26px;border-radius:999px;
+  box-shadow:0 0 0 2px transparent;transition:box-shadow .2s,transform .16s}
+.picker button:active{transform:scale(.9)}
+.picker button[aria-pressed="true"]{box-shadow:0 0 0 2px #fff}
+</style>
+</head>
+<body>
+
+<div class="picker" id="picker" role="group" aria-label="Palette">
+  <button type="button" data-theme="graphite" aria-pressed="true"  title="Graphite"
+          style="background:linear-gradient(135deg,#25242B 50%,#F0A93C 50%)"></button>
+  <button type="button" data-theme="ivory"    aria-pressed="false" title="Ivory"
+          style="background:linear-gradient(135deg,#F5F2EA 50%,#E09A2B 50%)"></button>
+  <button type="button" data-theme="plum"     aria-pressed="false" title="Plum"
+          style="background:linear-gradient(135deg,#2A2030 50%,#FFB067 50%)"></button>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ic-warn" viewBox="0 0 24 24"><path d="M12 3.6 21 19.2H3L12 3.6Z"/><path d="M12 9.6v4.2"/><path d="M12 16.8h.01"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="ic-snooze" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.4V12l3.2 1.9"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></symbol>
+  <symbol id="ic-pill" viewBox="0 0 24 24"><path d="m10.4 20.3 9.9-9.9a4.9 4.9 0 0 0-7-7l-9.9 9.9a4.9 4.9 0 0 0 7 7Z"/><path d="m8.4 8.4 7 7"/></symbol>
+  <symbol id="ic-chev" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="ic-home" viewBox="0 0 24 24"><path d="m3.5 10.6 8.5-6.9 8.5 6.9V19a1.7 1.7 0 0 1-1.7 1.7H5.2A1.7 1.7 0 0 1 3.5 19v-8.4Z"/><path d="M9.6 20.7v-6.2h4.8v6.2"/></symbol>
+  <symbol id="ic-file" viewBox="0 0 24 24"><path d="M13.2 3.3H7.4a1.5 1.5 0 0 0-1.5 1.5v14.4a1.5 1.5 0 0 0 1.5 1.5h9.2a1.5 1.5 0 0 0 1.5-1.5V8.1Z"/><path d="M13.2 3.3v4.8h4.9"/><path d="M9.2 13.2h5.6"/><path d="M9.2 16.6h3.6"/></symbol>
+  <symbol id="ic-spark" viewBox="0 0 24 24"><path d="M12 3.4 13.9 9l5.6 1.9-5.6 1.9L12 18.4l-1.9-5.6L4.5 11 10.1 9 12 3.4Z"/></symbol>
+  <symbol id="ic-drop" viewBox="0 0 24 24"><path d="M12 3.4s5.9 6.3 5.9 10.2a5.9 5.9 0 1 1-11.8 0C6.1 9.7 12 3.4 12 3.4Z"/></symbol>
+  <symbol id="ic-scan" viewBox="0 0 24 24"><path d="M4 8.4V6a2 2 0 0 1 2-2h2.4"/><path d="M15.6 4H18a2 2 0 0 1 2 2v2.4"/><path d="M20 15.6V18a2 2 0 0 1-2 2h-2.4"/><path d="M8.4 20H6a2 2 0 0 1-2-2v-2.4"/><path d="M8 12h8"/></symbol>
+</svg>
+
+<main class="app" id="app" data-theme="graphite" data-alert="active">
+
+  <svg class="grain" aria-hidden="true">
+    <filter id="g"><feTurbulence type="fractalNoise" baseFrequency=".82" numOctaves="3"/></filter>
+    <rect width="100%" height="100%" filter="url(#g)"/>
+  </svg>
+
+  <div class="statusbar">
+    <span class="num" id="clock">9:41</span>
+    <div class="statusbar__icons" aria-hidden="true">
+      <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor">
+        <rect x="0" y="7" width="3" height="4" rx=".7"/><rect x="4.3" y="5" width="3" height="6" rx=".7"/>
+        <rect x="8.6" y="2.6" width="3" height="8.4" rx=".7"/><rect x="12.9" y="0" width="3" height="11" rx=".7" opacity=".3"/>
+      </svg>
+      <svg width="17" height="11" viewBox="0 0 17 11" fill="none">
+        <rect x=".6" y=".6" width="13.4" height="9.8" rx="2.6" stroke="currentColor" stroke-width="1.1"/>
+        <rect x="2" y="2" width="9.4" height="7" rx="1.6" fill="currentColor"/>
+        <path d="M15.4 4.1v2.8a1.6 1.6 0 0 0 0-2.8Z" fill="currentColor" opacity=".5"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="scroll">
+
+    <div class="top">
+      <div>
+        <p class="top__hello" data-t="date">Tuesday, 1 September</p>
+        <p class="top__name" data-t="hello">Good morning, Zara</p>
+      </div>
+      <div class="top__side">
+        <div class="lang" id="lang" data-active="en" role="group" aria-label="Language">
+          <span class="lang__thumb" aria-hidden="true"></span>
+          <button type="button" data-lang="en" aria-pressed="true">EN</button>
+          <button type="button" data-lang="ur" lang="ur" aria-pressed="false">اردو</button>
+        </div>
+        <button class="avatar" type="button" aria-label="Profile">ZA</button>
+      </div>
+    </div>
+
+    <p class="streak">
+      <span class="streak__d" aria-hidden="true"></span>
+      <span><span class="num">12</span> <span data-t="streak">days on track</span></span>
+    </p>
+
+    <section class="hero">
+      <p class="hero__eyebrow" data-t="dueNow">Due now</p>
+      <h1 class="hero__med" id="heroMed">Ibuprofen</h1>
+      <p class="hero__meta" id="heroMeta"><span class="num">400 mg</span> · <span class="num">2:00 pm</span> · <span data-t="afterFood">after food</span></p>
+
+      <div class="blister" id="blister" role="group" aria-label="Today's doses">
+        <button class="well" type="button" data-state="taken">
+          <span class="pocket"><span class="cap"></span></span>
+          <span class="well__t num">8:00</span>
+        </button>
+        <button class="well" type="button" data-state="due">
+          <span class="pocket"><span class="cap"></span></span>
+          <span class="well__t num">2:00</span>
+        </button>
+        <button class="well" type="button" data-state="later">
+          <span class="pocket"><span class="cap"></span></span>
+          <span class="well__t num">4:00</span>
+        </button>
+        <button class="well" type="button" data-state="later">
+          <span class="pocket"><span class="cap"></span></span>
+          <span class="well__t num">10:00</span>
+        </button>
+      </div>
+
+      <div class="acts">
+        <button class="take" type="button" id="takeBtn">
+          <svg class="i i--sm" aria-hidden="true"><use href="#ic-check"/></svg>
+          <span data-t="take">Mark as taken</span>
+        </button>
+        <button class="snooze" type="button" aria-label="Snooze">
+          <svg class="i" aria-hidden="true"><use href="#ic-snooze"/></svg>
+        </button>
+      </div>
+
+      <button class="flagline" type="button">
+        <svg class="i i--sm" aria-hidden="true"><use href="#ic-warn"/></svg>
+        <span class="flagline__t" data-t="flag">Don't take with your Amoxicillin — tap to see why</span>
+        <svg class="i i--sm i--flip" aria-hidden="true" style="opacity:.6"><use href="#ic-chev"/></svg>
+      </button>
+    </section>
+
+    <section class="sect">
+      <div class="sect__head">
+        <h2 class="sect__title" data-t="recent">Recent records</h2>
+        <button class="sect__link" type="button">
+          <span data-t="seeAll">See all</span>
+          <svg class="i i--sm i--flip" aria-hidden="true"><use href="#ic-chev"/></svg>
+        </button>
+      </div>
+
+      <button class="rec" type="button">
+        <span class="rec__icon"><svg class="i" aria-hidden="true"><use href="#ic-drop"/></svg></span>
+        <span class="rec__body">
+          <span class="rec__title">Complete blood count</span>
+          <span class="rec__sub"><span class="num">12 Aug</span>, Dr Imran Malik</span>
+        </span>
+        <span class="rec__flag" data-t="flagLow"><span class="num">2</span> low</span>
+        <svg class="i i--sm i--flip rec__chev" aria-hidden="true"><use href="#ic-chev"/></svg>
+      </button>
+
+      <button class="rec" type="button">
+        <span class="rec__icon"><svg class="i" aria-hidden="true"><use href="#ic-file"/></svg></span>
+        <span class="rec__body">
+          <span class="rec__title">Amoxicillin prescription</span>
+          <span class="rec__sub"><span class="num">12 Aug</span>, <span data-t="daysLeft">4 days left</span></span>
+        </span>
+        <svg class="i i--sm i--flip rec__chev" aria-hidden="true"><use href="#ic-chev"/></svg>
+      </button>
+
+      <button class="rec" type="button">
+        <span class="rec__icon"><svg class="i" aria-hidden="true"><use href="#ic-scan"/></svg></span>
+        <span class="rec__body">
+          <span class="rec__title">Chest X-ray</span>
+          <span class="rec__sub"><span class="num">28 Jul</span>, Dr Sana Qureshi</span>
+        </span>
+        <svg class="i i--sm i--flip rec__chev" aria-hidden="true"><use href="#ic-chev"/></svg>
+      </button>
+    </section>
+
+  </div>
+
+  <nav class="nav" aria-label="Main">
+    <button class="nav__item" type="button" aria-current="page" aria-label="Home">
+      <svg class="i" aria-hidden="true"><use href="#ic-home"/></svg>
+    </button>
+    <button class="nav__item" type="button" aria-label="Records">
+      <svg class="i" aria-hidden="true"><use href="#ic-file"/></svg>
+    </button>
+    <button class="nav__add" type="button" aria-label="Add a record">
+      <svg class="i i--lg" aria-hidden="true"><use href="#ic-plus"/></svg>
+    </button>
+    <button class="nav__item" type="button" aria-label="Medicines">
+      <svg class="i" aria-hidden="true"><use href="#ic-pill"/></svg>
+    </button>
+    <button class="nav__item" type="button" aria-label="Ask Tabeeb">
+      <svg class="i" aria-hidden="true"><use href="#ic-spark"/></svg>
+    </button>
+  </nav>
+</main>
+
+<script>
+const app=document.getElementById('app');
+
+/* palette picker — dev only */
+document.getElementById('picker').addEventListener('click',e=>{
+  const b=e.target.closest('[data-theme]'); if(!b) return;
+  app.dataset.theme=b.dataset.theme;
+  document.querySelectorAll('#picker [data-theme]').forEach(x=>
+    x.setAttribute('aria-pressed',String(x===b)));
+});
+
+(function tick(){
+  const d=new Date(); let h=d.getHours(), m=String(d.getMinutes()).padStart(2,'0');
+  h=h%12||12;
+  document.getElementById('clock').textContent=h+':'+m;
+  setTimeout(tick,20000);
+})();
+
+const COPY={ en:{}, ur:{
+  date:'منگل، ۱ ستمبر', hello:'صبح بخیر، زارا',
+  streak:'دن مسلسل', dueNow:'ابھی لینی ہے', afterFood:'کھانے کے بعد',
+  take:'لے لی', flag:'اپنی اموکسیسلن کے ساتھ نہ لیں — وجہ دیکھیں',
+  recent:'حالیہ ریکارڈ', seeAll:'سب دیکھیں',
+  flagLow:'۲ کم', daysLeft:'۴ دن باقی'
+}};
+document.querySelectorAll('[data-t]').forEach(el=>{ COPY.en[el.dataset.t]=el.textContent; });
+
+const lang=document.getElementById('lang');
+lang.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-lang]'); if(!btn) return;
+  const code=btn.dataset.lang;
+  lang.dataset.active=code;
+  lang.querySelectorAll('[data-lang]').forEach(b=>b.setAttribute('aria-pressed',String(b===btn)));
+  app.dir = code==='ur' ? 'rtl' : 'ltr';
+  app.lang = code;
+  document.querySelectorAll('[data-t]').forEach(el=>{
+    const v=COPY[code][el.dataset.t]; if(v) el.textContent=v;
+  });
+});
+
+document.getElementById('takeBtn').addEventListener('click',()=>{
+  const wells=[...document.querySelectorAll('.well')];
+  const due=wells.findIndex(w=>w.dataset.state==='due');
+  if(due<0) return;
+  wells[due].dataset.state='taken';
+  const next=wells[due+1];
+  if(next){
+    next.dataset.state='due';
+    document.getElementById('heroMed').textContent='Amoxicillin';
+    document.getElementById('heroMeta').innerHTML =
+      '<span class="num">500 mg</span> · <span class="num">4:00 pm</span> · ' +
+      '<span data-t="afterFood">'+COPY[lang.dataset.active].afterFood+'</span>';
+  }
+  app.dataset.alert='none';
+});
+</script>
+</body>
+</html>
