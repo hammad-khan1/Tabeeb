@@ -1,10 +1,19 @@
 import type { RetrievedChunk } from './retriever';
 import type { Medication, Allergy } from '@/types/medical';
 
+interface ImagingFindingSummary {
+  finding: string;
+  bodyPart: string;
+  severity: string | null;
+  location: string | null;
+  urgencyLevel: string | null;
+}
+
 interface UserProfile {
   medications: Medication[];
   allergies: Allergy[];
   conditions: string[];
+  imagingFindings?: ImagingFindingSummary[];
 }
 
 interface PromptMessage {
@@ -79,6 +88,16 @@ function formatPatientContext(profile: UserProfile): string {
 
   if (profile.conditions.length > 0) {
     parts.push(`Known conditions: ${profile.conditions.join('; ')}`);
+  }
+
+  if (profile.imagingFindings && profile.imagingFindings.length > 0) {
+    const findings = profile.imagingFindings
+      .map((f) => {
+        const details = [f.bodyPart, f.severity, f.urgencyLevel].filter(Boolean).join(', ');
+        return `${f.finding}${details ? ` (${details})` : ''}`;
+      })
+      .join('; ');
+    parts.push(`Imaging findings (AI-assisted): ${findings}`);
   }
 
   return parts.length > 0 ? parts.join('\n') : 'No patient profile data available.';

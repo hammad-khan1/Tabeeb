@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import useSWR from "swr";
 import {
-  Settings as SettingsIcon,
   User,
   Globe,
   ShieldAlert,
@@ -65,14 +64,14 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
 
-  // Initialize from loaded data
-  useEffect(() => {
-    if (userData) {
-      setLanguage(userData.preferredLanguage ?? "en");
-      setAllergies(userData.knownAllergies ?? []);
-      setConditions(userData.knownConditions ?? []);
-    }
-  }, [userData]);
+  // Seed the form once per fetched payload without an extra effect render pass.
+  const [seededFrom, setSeededFrom] = useState<UserData | undefined>(undefined);
+  if (userData && userData !== seededFrom) {
+    setSeededFrom(userData);
+    setLanguage(userData.preferredLanguage ?? "en");
+    setAllergies(userData.knownAllergies ?? []);
+    setConditions(userData.knownConditions ?? []);
+  }
 
   const addAllergy = () => {
     const val = newAllergy.trim();

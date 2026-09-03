@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { eq, desc } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { healthInsights } from '../../../../drizzle/schema';
 
 export async function GET() {
@@ -14,12 +15,7 @@ export async function GET() {
       .orderBy(desc(healthInsights.generatedAt));
 
     return NextResponse.json(insights);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch insights';
-    console.error('[GET /api/insights]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('GET /api/insights', error, 'Failed to fetch insights');
   }
 }

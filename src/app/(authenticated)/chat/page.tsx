@@ -33,7 +33,6 @@ export default function ChatPage() {
   const {
     messages,
     sendMessage,
-    clearMessages,
     isLoading,
     conversationId,
     conversations,

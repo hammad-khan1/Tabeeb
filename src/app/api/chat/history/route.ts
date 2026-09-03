@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { chatMessages } from '../../../../../drizzle/schema';
 
 export async function GET(request: NextRequest) {
@@ -13,7 +14,12 @@ export async function GET(request: NextRequest) {
       const rows = await getDb()
         .select()
         .from(chatMessages)
-        .where(eq(chatMessages.conversationId, conversationId))
+        .where(
+          and(
+            eq(chatMessages.conversationId, conversationId),
+            eq(chatMessages.userId, userId)
+          )
+        )
         .orderBy(chatMessages.createdAt);
 
       return NextResponse.json(rows);
@@ -31,9 +37,7 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(sql`MAX(${chatMessages.createdAt})`));
 
     return NextResponse.json(conversations);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch history';
-    console.error('[GET /api/chat/history]', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error) {
+    return errorResponse('GET /api/chat/history', error, 'Failed to fetch history');
   }
 }

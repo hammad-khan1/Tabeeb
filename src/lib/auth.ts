@@ -3,13 +3,18 @@ import { getDb } from './db';
 import { users } from '../../drizzle/schema';
 import { eq } from 'drizzle-orm';
 
+export class AuthError extends Error {
+  readonly statusCode = 401;
+
+  constructor(message = 'Not authenticated') {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
 export async function getCurrentUserId(): Promise<string> {
   const { userId } = await auth();
-  if (!userId) {
-    const error = new Error('Not authenticated');
-    (error as any).statusCode = 401;
-    throw error;
-  }
+  if (!userId) throw new AuthError();
   await ensureUser(userId);
   return userId;
 }

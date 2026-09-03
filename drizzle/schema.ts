@@ -1,6 +1,6 @@
 import {
   pgTable, text, timestamp, uuid, varchar, integer, boolean, jsonb,
-  pgEnum, vector, index,
+  pgEnum, vector, index, doublePrecision,
 } from 'drizzle-orm/pg-core';
 
 export const documentTypeEnum = pgEnum('document_type', [
@@ -31,7 +31,7 @@ export const users = pgTable('users', {
 
 export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 500 }).notNull(),
   documentType: documentTypeEnum('document_type').notNull(),
   hospital: varchar('hospital', { length: 500 }),
@@ -44,6 +44,7 @@ export const documents = pgTable('documents', {
   storagePath: varchar('storage_path', { length: 1000 }).notNull(),
   extractionStatus: extractionStatusEnum('extraction_status').default('pending'),
   rawExtractedText: text('raw_extracted_text'),
+  summary: text('summary'),
   structuredData: jsonb('structured_data'),
   extractionConfidence: integer('extraction_confidence'),
   extractionNotes: text('extraction_notes'),
@@ -61,7 +62,7 @@ export const documents = pgTable('documents', {
 export const documentChunks = pgTable('document_chunks', {
   id: uuid('id').defaultRandom().primaryKey(),
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   chunkIndex: integer('chunk_index').notNull(),
   content: text('content').notNull(),
   embedding: vector('embedding', { dimensions: 1024 }),
@@ -76,7 +77,7 @@ export const documentChunks = pgTable('document_chunks', {
 export const medications = pgTable('medications', {
   id: uuid('id').defaultRandom().primaryKey(),
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 500 }).notNull(),
   genericName: varchar('generic_name', { length: 500 }),
   dosage: varchar('dosage', { length: 255 }),
@@ -95,9 +96,9 @@ export const medications = pgTable('medications', {
 export const diagnoses = pgTable('diagnoses', {
   id: uuid('id').defaultRandom().primaryKey(),
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   condition: varchar('condition', { length: 500 }).notNull(),
-  icd10Code: varchar('icd10_code', { length: 20 }),
+  icd10Code: varchar('icd10_code', { length: 50 }),
   severity: varchar('severity', { length: 100 }),
   notes: text('notes'),
   diagnosedDate: timestamp('diagnosed_date'),
@@ -109,10 +110,10 @@ export const diagnoses = pgTable('diagnoses', {
 export const labResults = pgTable('lab_results', {
   id: uuid('id').defaultRandom().primaryKey(),
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   testName: varchar('test_name', { length: 500 }).notNull(),
   value: varchar('value', { length: 100 }).notNull(),
-  numericValue: integer('numeric_value'),
+  numericValue: doublePrecision('numeric_value'),
   unit: varchar('unit', { length: 100 }),
   referenceRange: varchar('reference_range', { length: 255 }),
   isAbnormal: boolean('is_abnormal').default(false),
@@ -126,7 +127,7 @@ export const labResults = pgTable('lab_results', {
 export const allergies = pgTable('allergies', {
   id: uuid('id').defaultRandom().primaryKey(),
   documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   allergen: varchar('allergen', { length: 500 }).notNull(),
   allergyType: varchar('allergy_type', { length: 100 }),
   severity: varchar('severity', { length: 100 }),
@@ -138,7 +139,7 @@ export const allergies = pgTable('allergies', {
 
 export const interactionChecks = pgTable('interaction_checks', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   queryText: text('query_text').notNull(),
   itemsChecked: jsonb('items_checked').$type<string[]>().notNull(),
   results: jsonb('results').notNull(),
@@ -150,7 +151,7 @@ export const interactionChecks = pgTable('interaction_checks', {
 
 export const healthInsights = pgTable('health_insights', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 500 }).notNull(),
   digest: text('digest').notNull(),
   documentIdsReviewed: jsonb('document_ids_reviewed').$type<string[]>().notNull(),
@@ -163,7 +164,7 @@ export const healthInsights = pgTable('health_insights', {
 
 export const shareLinks = pgTable('share_links', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   token: varchar('token', { length: 255 }).notNull().unique(),
   title: varchar('title', { length: 500 }),
   documentIds: jsonb('document_ids').$type<string[]>().notNull(),
@@ -175,7 +176,7 @@ export const shareLinks = pgTable('share_links', {
 
 export const chatMessages = pgTable('chat_messages', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   conversationId: uuid('conversation_id').notNull(),
   role: varchar('role', { length: 20 }).notNull(),
   content: text('content').notNull(),
@@ -184,4 +185,24 @@ export const chatMessages = pgTable('chat_messages', {
 }, (table) => [
   index('chat_messages_user_conv_idx').on(table.userId, table.conversationId),
   index('chat_messages_created_idx').on(table.createdAt),
+]);
+
+export const imagingFindings = pgTable('imaging_findings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  bodyPart: varchar('body_part', { length: 200 }).notNull(),
+  modality: varchar('modality', { length: 100 }),
+  finding: text('finding').notNull(),
+  location: varchar('location', { length: 300 }),
+  severity: varchar('severity', { length: 100 }),
+  description: text('description'),
+  aiConfidence: integer('ai_confidence'),
+  urgencyLevel: varchar('urgency_level', { length: 50 }),
+  validationNotes: text('validation_notes'),
+  validated: boolean('validated').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('imaging_findings_user_idx').on(table.userId),
+  index('imaging_findings_doc_idx').on(table.documentId),
 ]);

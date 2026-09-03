@@ -26,6 +26,7 @@ export interface DocumentRecord {
   storagePath: string;
   extractionStatus: ExtractionStatus;
   rawExtractedText: string | null;
+  summary: string | null;
   structuredData: Record<string, unknown> | null;
   extractionConfidence: number | null;
   extractionNotes: string | null;

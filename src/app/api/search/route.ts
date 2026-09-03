@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { retrieveRelevantChunks } from '@/services/rag/retriever';
 
 export async function GET(request: NextRequest) {
@@ -24,12 +25,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(results);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Search failed';
-    console.error('[GET /api/search]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('GET /api/search', error, 'Search failed');
   }
 }

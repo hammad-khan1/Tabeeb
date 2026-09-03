@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { documents } from '../../../../../../drizzle/schema';
+import { applyConfirmedExtraction } from '@/services/document-processor';
 
 export async function POST(
   request: NextRequest,
@@ -32,6 +34,7 @@ export async function POST(
 
     const updates: Record<string, unknown> = {
       extractionStatus: 'confirmed',
+      extractionNotes: null,
       updatedAt: new Date(),
     };
 
@@ -43,18 +46,16 @@ export async function POST(
       updates.structuredData = structuredData;
     }
 
-    const [updated] = await getDb()      .update(documents)
+    const [updated] = await getDb()
+      .update(documents)
       .set(updates)
-      .where(eq(documents.id, id))
+      .where(and(eq(documents.id, id), eq(documents.userId, userId)))
       .returning();
 
+    await applyConfirmedExtraction(id, userId);
+
     return NextResponse.json(updated);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to confirm extraction';
-    console.error('[POST /api/documents/[id]/confirm-extraction]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('POST /api/documents/[id]/confirm-extraction', error, 'Failed to confirm extraction');
   }
 }

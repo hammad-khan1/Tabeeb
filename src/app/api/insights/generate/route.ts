@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { generateHealthDigest } from '@/services/insights/digest-generator';
 
 export async function POST() {
@@ -9,12 +10,7 @@ export async function POST() {
     const insight = await generateHealthDigest(userId);
 
     return NextResponse.json(insight, { status: 201 });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to generate insight';
-    console.error('[POST /api/insights/generate]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('POST /api/insights/generate', error, 'Failed to generate insight');
   }
 }

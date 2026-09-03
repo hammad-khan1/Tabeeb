@@ -1,7 +1,7 @@
-import { sql, eq, and } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { embeddingProvider } from '@/lib/embeddings';
-import { documentChunks, documents } from '../../../drizzle/schema';
+import { documents } from '../../../drizzle/schema';
 
 export interface RetrievedChunk {
   chunkId: string;
@@ -38,7 +38,7 @@ export async function retrieveRelevantChunks(
   options?: RetrieverOptions
 ): Promise<RetrievedChunk[]> {
   const limit = options?.limit ?? FINAL_RESULT_LIMIT;
-  const queryEmbedding = await embeddingProvider.embed(query);
+  const queryEmbedding = await embeddingProvider.embed(query, 'query');
   const embeddingLiteral = `[${queryEmbedding.join(',')}]`;
 
   const similarityQuery = sql`

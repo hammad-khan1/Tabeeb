@@ -1,6 +1,7 @@
 const PINECONE_API_URL = 'https://api.pinecone.io/embed';
 const PINECONE_MODEL = 'multilingual-e5-large';
 const EMBEDDING_DIMENSIONS = 1024;
+const MAX_BATCH_SIZE = 96;
 
 function getApiKey(): string {
   const key = process.env.PINECONE_API_KEY;
@@ -8,12 +9,21 @@ function getApiKey(): string {
   return key;
 }
 
+/**
+ * multilingual-e5-large is asymmetric: stored text must be embedded as 'passage' and
+ * search text as 'query'. Using one type for both silently degrades every retrieval.
+ */
+export type EmbeddingInputType = 'query' | 'passage';
+
 export interface EmbeddingProvider {
-  embed(text: string): Promise<number[]>;
-  embedBatch(texts: string[]): Promise<number[][]>;
+  embed(text: string, inputType: EmbeddingInputType): Promise<number[]>;
+  embedBatch(texts: string[], inputType: EmbeddingInputType): Promise<number[][]>;
 }
 
-async function pineconeEmbed(input: string[]): Promise<number[][]> {
+async function pineconeEmbed(
+  inputs: string[],
+  inputType: EmbeddingInputType
+): Promise<number[][]> {
   const response = await fetch(PINECONE_API_URL, {
     method: 'POST',
     headers: {
@@ -23,9 +33,10 @@ async function pineconeEmbed(input: string[]): Promise<number[][]> {
     },
     body: JSON.stringify({
       model: PINECONE_MODEL,
-      inputs: input.map((text) => ({ text })),
+      inputs: inputs.map((text) => ({ text })),
       parameters: {
-        input_type: 'passage',
+        input_type: inputType,
+        truncate: 'END',
       },
     }),
   });
@@ -35,26 +46,41 @@ async function pineconeEmbed(input: string[]): Promise<number[][]> {
     throw new Error(`Pinecone API error (${response.status}): ${err}`);
   }
 
-  const data = await response.json();
-  return data.data
-    .sort((a: { index: number }, b: { index: number }) => a.index - b.index)
-    .map((d: { values: number[] }) => d.values);
+  const payload = (await response.json()) as { data?: Array<{ values?: number[] }> };
+  const data = payload.data;
+
+  if (!Array.isArray(data) || data.length !== inputs.length) {
+    throw new Error(
+      `Pinecone returned ${data?.length ?? 0} embeddings for ${inputs.length} inputs`
+    );
+  }
+
+  return data.map((entry, i) => {
+    const values = entry.values;
+    if (!Array.isArray(values) || values.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Embedding ${i} has ${values?.length ?? 0} dimensions, expected ${EMBEDDING_DIMENSIONS}`
+      );
+    }
+    return values;
+  });
 }
 
 export const embeddingProvider: EmbeddingProvider = {
-  async embed(text: string) {
-    const results = await pineconeEmbed([text]);
+  async embed(text: string, inputType: EmbeddingInputType) {
+    const results = await pineconeEmbed([text], inputType);
     return results[0];
   },
 
-  async embedBatch(texts: string[]) {
+  async embedBatch(texts: string[], inputType: EmbeddingInputType) {
     if (texts.length === 0) return [];
     const allEmbeddings: number[][] = [];
-    for (let i = 0; i < texts.length; i += 96) {
-      const batch = texts.slice(i, i + 96);
-      const results = await pineconeEmbed(batch);
-      allEmbeddings.push(...results);
+    for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {
+      const batch = texts.slice(i, i + MAX_BATCH_SIZE);
+      allEmbeddings.push(...(await pineconeEmbed(batch, inputType)));
     }
     return allEmbeddings;
   },
 };
+
+export { EMBEDDING_DIMENSIONS };

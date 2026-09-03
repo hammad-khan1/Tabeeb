@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { users, documents } from '../../../../drizzle/schema';
 
 export async function GET() {
@@ -26,10 +27,8 @@ export async function GET() {
       knownAllergies: user.knownAllergies ?? [],
       knownConditions: user.knownConditions ?? [],
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to load settings';
-    const status = (error as any).statusCode ?? 500;
-    return NextResponse.json({ error: message }, { status });
+  } catch (error) {
+    return errorResponse('GET /api/settings', error, 'Failed to load settings');
   }
 }
 
@@ -64,10 +63,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to save settings';
-    const status = (error as any).statusCode ?? 500;
-    return NextResponse.json({ error: message }, { status });
+  } catch (error) {
+    return errorResponse('PATCH /api/settings', error, 'Failed to save settings');
   }
 }
 
@@ -81,9 +78,7 @@ export async function DELETE() {
     await db.delete(users).where(eq(users.id, userId));
 
     return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to delete data';
-    const status = (error as any).statusCode ?? 500;
-    return NextResponse.json({ error: message }, { status });
+  } catch (error) {
+    return errorResponse('DELETE /api/settings', error, 'Failed to delete data');
   }
 }

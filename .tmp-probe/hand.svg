@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1432">
+  <rect width="100%" height="100%" fill="#fdfcf7"/>
+  <text x="90" y="80" font-family="Helvetica" font-size="38" font-weight="bold" fill="#1a1a1a">SHIFA CLINIC</text>
+  <text x="90" y="115" font-family="Helvetica" font-size="20" fill="#444">Dr. Ayesha Siddiqui — MBBS, FCPS (Medicine)</text>
+  <text x="90" y="142" font-family="Helvetica" font-size="18" fill="#666">Jail Road, Lahore   |   Ph: 042-3577xxxx</text>
+  <line x1="90" y1="170" x2="1150" y2="170" stroke="#999" stroke-width="2"/>
+  <text x="90" y="250" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.17 90 250)">Patient: Muhammad Imran        Age: 54 / M</text>
+<text x="92.4" y="302" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.21 92.4 302)">Date: 12 / 08 / 2026</text>
+
+<text x="87" y="380" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.48 87 380)">Dx:  Type 2 Diabetes Mellitus</text>
+<text x="91.8" y="432" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.53 91.8 432)">      c/o Hypertension</text>
+
+<text x="90" y="510" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(-0.52 90 510)">Rx</text>
+<text x="93" y="562" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.51 93 562)">1)  Tab. Metformin  850 mg      BD  x 30 days</text>
+<text x="87.6" y="614" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.14 87.6 614)">2)  Tab. Amlodipine  5 mg        OD  x 30 days</text>
+<text x="93.6" y="666" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(-0.47 93.6 666)">3)  Cap. Omeprazole 20 mg      OD  a.c.</text>
+<text x="88.2" y="718" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.14 88.2 718)">4)  Tab. Atorvastatin 20 mg     HS</text>
+
+<text x="90" y="796" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.24 90 796)">Investigations:</text>
+<text x="92.4" y="848" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(-0.31 92.4 848)">      HbA1c  =  8.4 %</text>
+<text x="87" y="900" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(-0.06 87 900)">      FBS    =  178 mg/dL</text>
+<text x="91.2" y="952" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(-0.21 91.2 952)">      S. Creatinine = 1.1 mg/dL</text>
+
+<text x="86.4" y="1030" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.42 86.4 1030)">Allergy: PENICILLIN</text>
+
+<text x="91.8" y="1108" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.47 91.8 1108)">Advice: Low salt diet, walk 30 min daily</text>
+<text x="88.8" y="1160" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(0.41 88.8 1160)">Review after 4 weeks with reports</text>
+  <text x="820" y="1342" font-family="'Bradley Hand', 'Chalkduster', cursive" font-size="30" fill="#2b3a67" transform="rotate(-3 820 1342)">A. Siddiqui</text>
+  <line x1="800" y1="1362" x2="1080" y2="1362" stroke="#555" stroke-width="1"/>
+  <text x="840" y="1390" font-family="Helvetica" font-size="17" fill="#666">Signature &amp; Stamp</text>
+</svg>

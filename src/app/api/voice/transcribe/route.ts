@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { transcribeAudio } from '@/services/voice/transcriber';
 import { structureVoiceEntry } from '@/services/voice/structurer';
 
@@ -35,12 +36,7 @@ export async function POST(request: NextRequest) {
       duration: transcription.duration,
       structuredEntry,
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Transcription failed';
-    console.error('[POST /api/voice/transcribe]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('POST /api/voice/transcribe', error, 'Transcription failed');
   }
 }

@@ -9,7 +9,8 @@ export async function streamAnswer(messages: StreamMessage[]) {
   const stream = await groq.chat.completions.create({
     model: MODELS.primary,
     messages,
-    temperature: 0.3,
+    temperature: 0,
+    seed: 42,
     max_tokens: 2048,
     stream: true,
   });

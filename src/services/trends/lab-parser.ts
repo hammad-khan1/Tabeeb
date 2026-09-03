@@ -1,5 +1,3 @@
-import type { LabResult } from '@/types/medical';
-
 interface ParsedLabResult {
   testName: string;
   value: string;
@@ -8,6 +6,17 @@ interface ParsedLabResult {
   referenceRange: string | null;
   isAbnormal: boolean;
   testDate: string | null;
+}
+
+/** Raw lab entry as produced by the extraction LLM — every field is untrusted. */
+interface RawLabEntry {
+  testName?: string;
+  value?: string;
+  numericValue?: number | null;
+  unit?: string | null;
+  referenceRange?: string | null;
+  isAbnormal?: boolean;
+  testDate?: string | null;
 }
 
 function parseNumericValue(raw: string): number | null {
@@ -28,17 +37,19 @@ function isOutOfRange(numericValue: number | null, referenceRange: string | null
   return numericValue < min || numericValue > max;
 }
 
-export function parseLabResults(structuredData: any): ParsedLabResult[] {
+export function parseLabResults(structuredData: unknown): ParsedLabResult[] {
   if (!structuredData) return [];
 
-  const labResults: any[] = Array.isArray(structuredData)
+  const labResults: RawLabEntry[] = Array.isArray(structuredData)
     ? structuredData
-    : structuredData.labResults ?? [];
+    : ((structuredData as { labResults?: RawLabEntry[] }).labResults ?? []);
 
   return labResults
-    .filter((entry: any) => entry && entry.testName)
-    .map((entry: any): ParsedLabResult => {
-      const numericValue = entry.numericValue ?? parseNumericValue(entry.value);
+    .filter((entry): entry is RawLabEntry & { testName: string } =>
+      Boolean(entry && entry.testName)
+    )
+    .map((entry): ParsedLabResult => {
+      const numericValue = entry.numericValue ?? parseNumericValue(entry.value ?? '');
       const referenceRange = entry.referenceRange ?? null;
 
       return {

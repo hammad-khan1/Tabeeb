@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { localStorage } from '@/lib/storage';
-import { documents } from '../../../../../drizzle/schema';
+import { documents, imagingFindings } from '../../../../../drizzle/schema';
 
 export async function GET(
   request: NextRequest,
@@ -25,14 +26,18 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(doc);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch document';
-    console.error('[GET /api/documents/[id]]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    let findings: typeof imagingFindings.$inferSelect[] = [];
+    if (doc.documentType === 'imaging_report') {
+      findings = await getDb()
+        .select()
+        .from(imagingFindings)
+        .where(eq(imagingFindings.documentId, id))
+        .orderBy(imagingFindings.createdAt);
+    }
+
+    return NextResponse.json({ ...doc, imagingFindings: findings });
+  } catch (error) {
+    return errorResponse('GET /api/documents/[id]', error, 'Failed to fetch document');
   }
 }
 
@@ -80,13 +85,8 @@ export async function PATCH(
     }
 
     return NextResponse.json(updated);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to update document';
-    console.error('[PATCH /api/documents/[id]]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('PATCH /api/documents/[id]', error, 'Failed to update document');
   }
 }
 
@@ -118,12 +118,7 @@ export async function DELETE(
       .where(eq(documents.id, id));
 
     return NextResponse.json({ success: true, id });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to delete document';
-    console.error('[DELETE /api/documents/[id]]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('DELETE /api/documents/[id]', error, 'Failed to delete document');
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { checkInteractions } from '@/services/interactions/checker';
 
 export async function POST(request: NextRequest) {
@@ -17,12 +18,7 @@ export async function POST(request: NextRequest) {
     const results = await checkInteractions(userId, query);
 
     return NextResponse.json(results);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Interaction check failed';
-    console.error('[POST /api/interactions/check]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('POST /api/interactions/check', error, 'Interaction check failed');
   }
 }

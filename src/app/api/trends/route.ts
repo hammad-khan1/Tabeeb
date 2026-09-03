@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, asc } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { analyzeLabTrend } from '@/services/trends/analyzer';
 import { labResults } from '../../../../drizzle/schema';
 
@@ -59,12 +60,7 @@ export async function GET(request: NextRequest) {
       analysis,
       rawResults: results,
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Trend analysis failed';
-    console.error('[GET /api/trends]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('GET /api/trends', error, 'Trend analysis failed');
   }
 }

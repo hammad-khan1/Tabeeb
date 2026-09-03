@@ -1,10 +1,5 @@
 const RXNAV_BASE = 'https://rxnav.nlm.nih.gov/REST';
 
-interface RxNormSearchResult {
-  rxcui: string;
-  name: string;
-}
-
 interface InteractionItem {
   rxcui: string;
   name: string;
@@ -15,6 +10,22 @@ interface InteractionItem {
 interface InteractionGroup {
   sourceName: string;
   interactions: InteractionItem[];
+}
+
+/** Partial shape of the RxNav interaction.json response — only the fields consumed here. */
+interface RxNavInteractionPair {
+  severity?: string;
+  description?: string;
+  interactionConceptGroup?: Array<{ minConceptItem?: { rxcui?: string; name?: string } }>;
+}
+
+interface RxNavFullInteractionGroup {
+  interactionPair?: RxNavInteractionPair[];
+}
+
+interface RxNavInteractionTypeGroup {
+  sourceName?: string;
+  fullInteractionGroup?: RxNavFullInteractionGroup[];
 }
 
 export async function getRxNormId(drugName: string): Promise<string | null> {
@@ -49,11 +60,11 @@ export async function getDrugInteractions(rxcui: string): Promise<InteractionGro
     const groups = data?.fullInteractionTypeGroup;
     if (!groups || !Array.isArray(groups)) return [];
 
-    return groups.flatMap((group: any) => {
+    return groups.flatMap((group: RxNavInteractionTypeGroup) => {
       const sourceName = group?.sourceName ?? 'Unknown';
       const interactions = (group?.fullInteractionGroup ?? []).flatMap(
-        (fg: any) =>
-          (fg?.interactionPair ?? []).map((pair: any) => ({
+        (fg: RxNavFullInteractionGroup) =>
+          (fg?.interactionPair ?? []).map((pair: RxNavInteractionPair) => ({
             rxcui: pair?.interactionConceptGroup?.[0]?.minConceptItem?.rxcui ?? '',
             name: pair?.interactionConceptGroup?.[0]?.minConceptItem?.name ?? '',
             severity: pair?.severity ?? 'N/A',

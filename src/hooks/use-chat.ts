@@ -1,30 +1,21 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
+import useSWR from "swr";
 import type { ChatMessage, SourceReference, ConversationSummary } from "@/types/chat";
+
+const fetchConversationList = (url: string): Promise<ConversationSummary[]> =>
+  fetch(url).then((r) => (r.ok ? r.json() : []));
 
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchConversations = useCallback(async () => {
-    try {
-      const res = await fetch("/api/chat/history");
-      if (res.ok) {
-        const data = await res.json();
-        setConversations(data);
-      }
-    } catch {
-      // silently fail
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+  const { data: conversations = [], mutate: refreshConversations } = useSWR<
+    ConversationSummary[]
+  >("/api/chat/history", fetchConversationList, { revalidateOnFocus: false });
 
   const loadConversation = useCallback(async (id: string) => {
     setConversationId(id);
@@ -160,7 +151,7 @@ export function useChat() {
         }
       }
 
-      fetchConversations();
+      refreshConversations();
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") {
         // User cancelled
@@ -181,7 +172,7 @@ export function useChat() {
       setIsLoading(false);
       abortRef.current = null;
     }
-  }, [isLoading, conversationId, fetchConversations]);
+  }, [isLoading, conversationId, refreshConversations]);
 
   const clearMessages = useCallback(() => {
     startNewConversation();

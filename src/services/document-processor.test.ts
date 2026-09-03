@@ -56,13 +56,13 @@ Hypertension`;
     }
   });
 
-  it('splits large sections into sub-chunks', () => {
+  it('splits large sections into sub-chunks within the token budget', () => {
     const longParagraph = 'Word '.repeat(1000); // ~5000 chars
     const text = `Medications\n${longParagraph}`;
     const chunks = chunkDocument(text, metadata);
     expect(chunks.length).toBeGreaterThan(1);
     for (const chunk of chunks) {
-      expect(chunk.content.length).toBeLessThanOrEqual(3200 + 200); // some tolerance for sentence breaks
+      expect(chunk.tokenCount).toBeLessThanOrEqual(450);
     }
   });
 

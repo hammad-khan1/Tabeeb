@@ -1,0 +1,421 @@
+=== attempt 1 21:56:18 ===
+◇ injected env (8) from .env.local // tip: ⌘ enable debugging { debug: true }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 16:57:52 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'dmm',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '985',
+    'x-ratelimit-remaining-tokens': '3294',
+    'x-ratelimit-reset-requests': '21m36s',
+    'x-ratelimit-reset-tokens': '35.295s',
+    'x-request-id': 'req_01m1m3894ne1ybfdnsqfjwt7x0',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=3eFadckQeYbneVml8Du4QVTfgLhdMK7pRcNb7sWlde0-1788454642.8169055-1.0.1.1-IhQ5tMOoLztw4kwQ6etTk_RwbUN7MpPuq4knQxdAlAMsfT35jG__pPu7o9k4krQKmfpnIHIKb29FMWhtEhJ_OyPlxudhix9ckHgbKCBLqHsD4KXUmyawkDhbGQSNkJsP; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:27:52 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a3564b0d9a7db7f7-KHI',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 2 21:58:52 ===
+◇ injected env (8) from .env.local // tip: ⌁ auth for agents [www.vestauth.com]
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:00:26 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'bom',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '983',
+    'x-ratelimit-remaining-tokens': '5145',
+    'x-ratelimit-reset-requests': '24m28.8s',
+    'x-ratelimit-reset-tokens': '21.412s',
+    'x-request-id': 'req_01m1m3cyweeqttqqaz1a3x2513',
+    'set-cookie': '__cf_bm=vRMdFlVPMop7izef2T9AN3BhMh0Vsgeb5QZ1zEl0W9Q-1788454796.1391776-1.0.1.1-7B_KtYN5yyumosuKlpxEdE4XNZPpOhJZaPMrfAJkQUFH3bnDWJD4QHq_ARdieoLUWfb0vlcPtgXXLVDfJ_hA.HAkXFWbubRfOH2CJdSBZsj_5yZoprgwCNC0bnM9DiXw; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:30:26 GMT',
+    via: '1.1 google',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-cache-status': 'DYNAMIC',
+    'cf-ray': 'a3564ecbdf4a601c-SIN',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 3 22:01:25 ===
+◇ injected env (8) from .env.local // tip: ◈ encrypted .env [www.dotenvx.com]
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:03:00 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'bom',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '981',
+    'x-ratelimit-remaining-tokens': '3934',
+    'x-ratelimit-reset-requests': '27m21.6s',
+    'x-ratelimit-reset-tokens': '30.494s',
+    'x-request-id': 'req_01m1m3hnmveyt8d3n0j356bd5y',
+    'set-cookie': '__cf_bm=XEGJzZXEkyXK_C0VThg4MUQTBFbYq8sftpX8VMLO8Hw-1788454950.5202315-1.0.1.1-GbFBQJwtZbh0xZpA1Jsf0CybTV3bhTGCi_KeVn8h7JbYMlwOALL6JpMBZLFnF_SvsOnesHRStigjmIubD56FgrUZcIZGM6u_sLuQsH0fVJijfb0E8RuCIEvoWYN.nxu_; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:33:00 GMT',
+    via: '1.1 google',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-cache-status': 'DYNAMIC',
+    'cf-ray': 'a3565290bb46cdf2-SIN',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 4 22:04:00 ===
+◇ injected env (8) from .env.local // tip: ⌘ suppress logs { quiet: true }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:05:34 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'dmm',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '979',
+    'x-ratelimit-remaining-tokens': '2739',
+    'x-ratelimit-reset-requests': '30m14.4s',
+    'x-ratelimit-reset-tokens': '39.457s',
+    'x-request-id': 'req_01m1m3pbtdepxav4tnr27808by',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=0oXjYKDILzvEAjyWEVT7LtUIdUbiX3Y.2l21RFATX4k-1788455104.314793-1.0.1.1-qgFhxMQqayHqIkzLoS1WZJIeQ3cqItZ_1RTLcugzQ.mIehxpcAaMv2oltfgsp7LgdwG0sFZexN2LxUpqbmcx.MSa9WARwP9NFw.GbYXo5YDRgreYpQaaOm8N8xbghKNn; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:35:34 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a3565651f96d24d9-KHI',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 5 22:06:33 ===
+◇ injected env (8) from .env.local // tip: ⌁ auth for agents [www.vestauth.com]
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:08:07 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'dmm',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '977',
+    'x-ratelimit-remaining-tokens': '4383',
+    'x-ratelimit-reset-requests': '33m7.2s',
+    'x-ratelimit-reset-tokens': '27.127s',
+    'x-request-id': 'req_01m1m3v131enwt075kw775mct7',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=b1O15ud0q8quSA5HqzDMiq9C3azr7F8RbMEkfj853qU-1788455257.1688168-1.0.1.1-_Pn4GMjcs77M9Zb2KGnPA_04VCPzsFgkP1dtm5hyWLFLJt5g_BpKQ7XNZjUxwIeXlXROqNUPiPgzirjhxd_krcYIkZjnQwP.D9rLPKK6XQpfccgajQ5_5DIPCj6NyTsG; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:38:07 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a3565a0d4d0c4b13-KHI',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 6 22:09:06 ===
+◇ injected env (8) from .env.local // tip: ⌘ enable debugging { debug: true }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:10:40 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'dmm',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '975',
+    'x-ratelimit-remaining-tokens': '4336',
+    'x-ratelimit-reset-requests': '36m0s',
+    'x-ratelimit-reset-tokens': '27.48s',
+    'x-request-id': 'req_01m1m3zq1ye7qt0y2042gncw7k',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=q4_2eGKOjPQCwycw6wtbLehmn.DlMRYxfAkK9UMJFIg-1788455410.7341225-1.0.1.1-yyM_vIv9guehqNSUcqJOTdejqOTeeqZr8ok2y57DEweFPpJJCU3_rqIT0hUdBFmC7EeqTAdlj6InVdCbg8GZsl9YDRIJ6iSZtyj0Sd7tN5iTV8HHJAKLDkO3d_vnV126; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:40:40 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a3565dcd1b38c225-KHI',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 7 22:11:40 ===
+◇ injected env (8) from .env.local // tip: ◈ secrets for agents [www.dotenvx.com]
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:13:14 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'dmm',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '973',
+    'x-ratelimit-remaining-tokens': '3993',
+    'x-ratelimit-reset-requests': '38m52.8s',
+    'x-ratelimit-reset-tokens': '30.052s',
+    'x-request-id': 'req_01m1m44d5meq19416tqnhctxzn',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=HaaFIQZ5xBCXarNIeM2fvMDepZLd8W4EqyW3.PR1jtg-1788455564.451714-1.0.1.1-80PjTy42gk8QY_5JkZVBC1Da_2RG3Ab3v2IJUDQN35SKTGiJChbtH5Zu5YuQHNeBmoVgdjaykrM01fam7yaDzDYdyr7zI_9H6RGUFVPgNVozSGoZUcZpBxaXlcd9nAob; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:43:14 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a356618dca104906-KHI',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 8 22:14:13 ===
+◇ injected env (8) from .env.local // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:15:48 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'bom',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '971',
+    'x-ratelimit-remaining-tokens': '4838',
+    'x-ratelimit-reset-requests': '41m45.6s',
+    'x-ratelimit-reset-tokens': '23.715s',
+    'x-request-id': 'req_01m1m493qce63rhw4816m5rqw3',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=38YJqYti79T.kdUVMIifBZr7WvAoiz4MC6Tlp4nn6DI-1788455718.5980132-1.0.1.1-Wh7JZfPt0czi_78DlV9MRZJrLnn5Y9G8AZGV6y_Fdw0CMOcGMXUDYFEp96zhDp6RSJ2jjHhS8ksKCeM4ELXvHHqfmsBnfm_hRhWXdgMqKalZqP7X0hZR4y4CcMNthuiH; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:45:48 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a35665513e0f9f9e-SIN',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 9 22:16:48 ===
+◇ injected env (8) from .env.local // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:18:22 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'bom',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '969',
+    'x-ratelimit-remaining-tokens': '5301',
+    'x-ratelimit-reset-requests': '44m38.4s',
+    'x-ratelimit-reset-tokens': '20.242s',
+    'x-request-id': 'req_01m1m4dskrephbckyhbw3m8516',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=9XAJUJI36ufNlZl2LnQAj8xhA_vnW9zrzIo2HfywUW8-1788455872.0855322-1.0.1.1-7zfMUofSi.Zg_QRuxaHSKUMtn41NP.KQIBwDbY_IMQsg97NhNSzWl7Xc9w.hiRCVORQDm_aRNZEwdGyWYn.mH9SvNUH21owcEHm.RbiGRnRhk2jNpCLPbExuLDdWSfTQ; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 17:48:22 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a35669108ad2ffe4-SIN',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
+=== attempt 10 22:19:21 ===
+◇ injected env (8) from .env.local // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+APIConnectionTimeoutError: Request timed out.
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:451:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: undefined,
+  headers: undefined,
+  error: undefined
+}
+=== attempt 11 22:23:44 ===
+◇ injected env (8) from .env.local // tip: ⌘ enable debugging { debug: true }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+APIConnectionTimeoutError: Request timed out.
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:451:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: undefined,
+  headers: undefined,
+  error: undefined
+}
+=== attempt 12 22:27:12 ===
+◇ injected env (8) from .env.local // tip: ⌘ enable debugging { debug: true }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+
+APIConnectionTimeoutError: Request timed out.
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:451:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: undefined,
+  headers: undefined,
+  error: undefined
+}
+=== attempt 13 22:30:16 ===
+◇ injected env (8) from .env.local // tip: ⌘ suppress logs { quiet: true }
+fixture: .tmp-probe/hard-rx.jpg (2 KB)
+

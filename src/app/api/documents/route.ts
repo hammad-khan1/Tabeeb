@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, desc, and, gte, lte, like, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { localStorage } from '@/lib/storage';
 import { processDocument } from '@/services/document-processor';
 import { documents } from '../../../../drizzle/schema';
@@ -55,14 +56,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(doc, { status: 201 });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Upload failed';
-    const status = (error as any)?.statusCode || 500;
-    console.error('[POST /api/documents]', message);
-    return NextResponse.json(
-      { error: message },
-      { status }
-    );
+  } catch (error) {
+    return errorResponse('POST /api/documents', error, 'Upload failed');
   }
 }
 
@@ -107,12 +102,7 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(documents.createdAt));
 
     return NextResponse.json(results);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch documents';
-    console.error('[GET /api/documents]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('GET /api/documents', error, 'Failed to fetch documents');
   }
 }

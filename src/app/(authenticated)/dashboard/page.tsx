@@ -71,6 +71,8 @@ export default function DashboardPage() {
 
   // Stats
   const totalDocs = docs.length;
+  // Display-only stat; a cutoff that drifts by milliseconds between renders is harmless.
+  // eslint-disable-next-line react-hooks/purity
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const recentUploads = docs.filter(
     (d) => new Date(d.createdAt).getTime() > sevenDaysAgo

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
+import { errorResponse } from '@/lib/api-error';
 import { createShareLink, getSharedHistory } from '@/services/history/share';
 
 export async function GET(request: NextRequest) {
@@ -34,12 +35,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(result, { status: 201 });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to create share link';
-    console.error('[POST /api/history/share]', message);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+  } catch (error) {
+    return errorResponse('POST /api/history/share', error, 'Failed to create share link');
   }
 }

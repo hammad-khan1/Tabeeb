@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import useSWR, { mutate } from "swr";
 import {
   Lightbulb,
@@ -177,7 +178,7 @@ export default function InsightsPage() {
                 Upload medical documents first, then generate an insight to get
                 an AI-powered analysis of your health records.
               </p>
-              <Button className="mt-4" variant="outline" render={<a href="/documents/upload" />}>
+              <Button className="mt-4" variant="outline" render={<Link href="/documents/upload" />}>
                 <FileText className="mr-2 size-4" />
                 Upload Documents
               </Button>

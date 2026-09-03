@@ -7,12 +7,22 @@ import {
   diagnoses,
   labResults,
   allergies,
+  imagingFindings,
 } from '../../drizzle/schema';
 import { localStorage } from '@/lib/storage';
 import { groq, MODELS } from '@/lib/groq';
 import { embeddingProvider } from '@/lib/embeddings';
 import { extractText } from '@/services/text-extractors';
-import type { StructuredExtraction } from '@/types/medical';
+import { validateFindings } from '@/services/radiology/validator';
+import {
+  parseStructuredExtraction,
+  isExtractionEmpty,
+  clamp,
+  safeDate,
+  type ValidatedExtraction,
+} from '@/services/extraction-schema';
+import { reconcileExtraction } from '@/services/nlp/reconciler';
+import { generateDocumentSummary } from '@/services/summarizer';
 
 // ── Section detection patterns ──────────────────────────────────────────────
 
@@ -29,7 +39,14 @@ const SECTION_PATTERNS: Array<{ pattern: RegExp; name: string }> = [
   { pattern: /(?:imaging|radiology|x-rays?|ct scans?|mris?|ultrasounds?)/i, name: 'Imaging' },
 ];
 
-const MAX_CHUNK_CHARS = 3200;
+/**
+ * multilingual-e5-large truncates silently past ~512 tokens, so chunks are budgeted in
+ * estimated tokens rather than characters — Urdu script is far denser per character.
+ */
+const MAX_CHUNK_TOKENS = 450;
+
+/** Below this OCR confidence, entities are held back from the health record for review. */
+const LOW_CONFIDENCE_THRESHOLD = 45;
 
 // ── Structured data extraction via LLM ──────────────────────────────────────
 
@@ -62,7 +79,7 @@ Return ONLY valid JSON matching this exact schema:
     {
       "testName": "test name",
       "value": "result value as string",
-      "numericValue": 123,
+      "numericValue": 123.4,
       "unit": "mg/dL etc.",
       "referenceRange": "normal range if provided",
       "isAbnormal": false,
@@ -86,15 +103,18 @@ Return ONLY valid JSON matching this exact schema:
 
 Rules:
 - Return empty arrays for categories with no findings, never null
+- Preserve decimal precision exactly as written — numericValue for "HbA1c 6.8 %" is 6.8, not 7
 - For lab results, set isAbnormal=true only when explicitly flagged or clearly outside reference range
 - Preserve original Urdu text alongside transliteration when present
 - Do NOT invent data that is not in the text
-- If a date is not found, omit the field rather than guessing`;
+- If a date is not found, omit the field rather than guessing
+- The text may come from OCR of a handwritten form and can contain [unclear: ...] markers. Extract the entity anyway and keep the marker inside the relevant field so the patient can verify it. Never substitute a guess for an unclear drug name or number.
+- Expand clinical shorthand into the correct field: OD/BD/BID/TDS/TID/QID/HS/SOS/PRN belong in "frequency", PO/IV/IM/SC belong in "route", and Tab/Cap/Syp/Inj describe the dosage form`;
 
 export async function extractStructuredData(
   text: string,
   documentType: string
-): Promise<StructuredExtraction> {
+): Promise<ValidatedExtraction> {
   const response = await groq.chat.completions.create({
     model: MODELS.primary,
     messages: [
@@ -105,7 +125,7 @@ export async function extractStructuredData(
       },
     ],
     temperature: 0.1,
-    max_tokens: 4096,
+    max_tokens: 8192,
     response_format: { type: 'json_object' },
   });
 
@@ -114,7 +134,14 @@ export async function extractStructuredData(
     throw new Error('Empty response from extraction model');
   }
 
-  return JSON.parse(content) as StructuredExtraction;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(content);
+  } catch {
+    throw new Error('Extraction model returned malformed JSON');
+  }
+
+  return parseStructuredExtraction(raw);
 }
 
 // ── Section-aware document chunking ─────────────────────────────────────────
@@ -138,14 +165,20 @@ function detectSection(text: string): string {
   return 'General';
 }
 
-function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / 4);
+/** Arabic-script characters cost roughly one token per 2.5 chars vs 4 for Latin. */
+export function estimateTokenCount(text: string): number {
+  let arabicScript = 0;
+  for (const char of text) {
+    const codePoint = char.codePointAt(0)!;
+    if ((codePoint >= 0x0600 && codePoint <= 0x06ff) || (codePoint >= 0xfb50 && codePoint <= 0xfdff)) {
+      arabicScript += 1;
+    }
+  }
+  const latinish = text.length - arabicScript;
+  return Math.max(1, Math.ceil(arabicScript / 2.5 + latinish / 4));
 }
 
-function buildContextHeader(
-  meta: ChunkMetadata,
-  section: string
-): string {
+function buildContextHeader(meta: ChunkMetadata, section: string): string {
   const parts = [`Document: ${meta.documentType}`];
   if (meta.hospital) parts.push(`Hospital: ${meta.hospital}`);
   if (meta.date) parts.push(`Date: ${meta.date}`);
@@ -153,106 +186,113 @@ function buildContextHeader(
   return `[${parts.join(', ')}]`;
 }
 
-export function chunkDocument(
-  text: string,
-  metadata: ChunkMetadata
-): DocumentChunk[] {
-  if (!text.trim()) return [];
-
+function groupIntoSections(text: string): Array<{ section: string; body: string }> {
   const lines = text.split('\n');
-  const chunks: DocumentChunk[] = [];
-  let currentSection = 'General';
-  let currentText = '';
+  const groups: Array<{ section: string; lines: string[] }> = [];
+  let current = { section: 'General', lines: [] as string[] };
 
   for (const line of lines) {
-    const sectionMatch = detectSection(line);
-    if (sectionMatch !== 'General' && sectionMatch !== currentSection) {
-      if (currentText.trim()) {
-        const header = buildContextHeader(metadata, currentSection);
-        const fullContent = `${header}\n${currentText.trim()}`;
-        if (fullContent.length > MAX_CHUNK_CHARS) {
-          const subChunks = splitIntoSubChunks(fullContent, MAX_CHUNK_CHARS);
-          for (const sub of subChunks) {
-            chunks.push({
-              content: sub,
-              section: currentSection,
-              tokenCount: estimateTokenCount(sub),
-            });
-          }
-        } else {
-          chunks.push({
-            content: fullContent,
-            section: currentSection,
-            tokenCount: estimateTokenCount(fullContent),
-          });
-        }
-      }
-      currentSection = sectionMatch;
-      currentText = line + '\n';
+    const detected = detectSection(line);
+    if (detected !== 'General' && detected !== current.section) {
+      if (current.lines.some((l) => l.trim())) groups.push(current);
+      current = { section: detected, lines: [line] };
     } else {
-      currentText += line + '\n';
+      current.lines.push(line);
     }
   }
+  if (current.lines.some((l) => l.trim())) groups.push(current);
 
-  if (currentText.trim()) {
-    const header = buildContextHeader(metadata, currentSection);
-    const fullContent = `${header}\n${currentText.trim()}`;
-    if (fullContent.length > MAX_CHUNK_CHARS) {
-      const subChunks = splitIntoSubChunks(fullContent, MAX_CHUNK_CHARS);
-      for (const sub of subChunks) {
-        chunks.push({
-          content: sub,
-          section: currentSection,
-          tokenCount: estimateTokenCount(sub),
-        });
-      }
-    } else {
-      chunks.push({
-        content: fullContent,
-        section: currentSection,
-        tokenCount: estimateTokenCount(fullContent),
-      });
-    }
-  }
-
-  return chunks;
+  return groups.map((group) => ({
+    section: group.section,
+    body: group.lines.join('\n').trim(),
+  }));
 }
 
-function splitIntoSubChunks(text: string, maxChars: number): string[] {
-  const chunks: string[] = [];
-  const paragraphs = text.split(/\n\n+/);
+function sliceByEstimatedTokens(text: string, maxTokens: number): string[] {
+  const density = estimateTokenCount(text) / text.length;
+  const charBudget = Math.max(200, Math.floor(maxTokens / density));
+  const pieces: string[] = [];
+  for (let start = 0; start < text.length; start += charBudget) {
+    pieces.push(text.slice(start, start + charBudget).trim());
+  }
+  return pieces.filter(Boolean);
+}
+
+function splitOversizedLine(line: string, maxTokens: number): string[] {
+  // '۔' is the Urdu full stop.
+  const sentences = line.split(/(?<=[.!?۔])\s+/);
+  const pieces: string[] = [];
   let current = '';
 
-  for (const para of paragraphs) {
-    if (current.length + para.length + 2 > maxChars && current) {
-      chunks.push(current.trim());
-      current = '';
-    }
-    if (para.length > maxChars) {
+  for (const sentence of sentences) {
+    if (estimateTokenCount(sentence) > maxTokens) {
       if (current) {
-        chunks.push(current.trim());
+        pieces.push(current);
         current = '';
       }
-      let start = 0;
-      while (start < para.length) {
-        const end = Math.min(start + maxChars, para.length);
-        const slice = para.slice(start, end);
-        const breakPoint = slice.lastIndexOf('. ');
-        if (breakPoint > maxChars * 0.5) {
-          chunks.push(slice.slice(0, breakPoint + 1).trim());
-          start = start + breakPoint + 1;
-        } else {
-          chunks.push(slice.trim());
-          start = end;
-        }
-      }
+      pieces.push(...sliceByEstimatedTokens(sentence, maxTokens));
+      continue;
+    }
+
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (estimateTokenCount(candidate) > maxTokens) {
+      if (current) pieces.push(current);
+      current = sentence;
     } else {
-      current += (current ? '\n\n' : '') + para;
+      current = candidate;
     }
   }
 
-  if (current.trim()) {
-    chunks.push(current.trim());
+  if (current) pieces.push(current);
+  return pieces;
+}
+
+function splitByTokenBudget(body: string, maxTokens: number): string[] {
+  const lines = body.split('\n').filter((line) => line.trim().length > 0);
+  const pieces: string[] = [];
+  let current: string[] = [];
+
+  const flush = () => {
+    if (current.length > 0) {
+      pieces.push(current.join('\n'));
+      current = [];
+    }
+  };
+
+  for (const line of lines) {
+    if (estimateTokenCount(line) > maxTokens) {
+      flush();
+      pieces.push(...splitOversizedLine(line, maxTokens));
+      continue;
+    }
+
+    const candidate = [...current, line].join('\n');
+    if (estimateTokenCount(candidate) > maxTokens) {
+      flush();
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+
+  flush();
+  return pieces;
+}
+
+export function chunkDocument(text: string, metadata: ChunkMetadata): DocumentChunk[] {
+  if (!text.trim()) return [];
+
+  const chunks: DocumentChunk[] = [];
+
+  for (const { section, body } of groupIntoSections(text)) {
+    const header = buildContextHeader(metadata, section);
+    // Every sub-chunk repeats the header, so the body budget excludes it.
+    const bodyBudget = Math.max(50, MAX_CHUNK_TOKENS - estimateTokenCount(header));
+
+    for (const piece of splitByTokenBudget(body, bodyBudget)) {
+      const content = `${header}\n${piece}`;
+      chunks.push({ content, section, tokenCount: estimateTokenCount(content) });
+    }
   }
 
   return chunks;
@@ -260,68 +300,101 @@ function splitIntoSubChunks(text: string, maxChars: number): string[] {
 
 // ── Insert extracted entities into normalized tables ────────────────────────
 
+function buildEntityRows(
+  documentId: string,
+  userId: string,
+  data: ValidatedExtraction,
+  fallbackDate: Date
+) {
+  const medicationRows = data.medications
+    .map((m) => {
+      const name = clamp(m.name, 500);
+      if (!name) return null;
+      return {
+        documentId,
+        userId,
+        name,
+        genericName: clamp(m.genericName, 500),
+        dosage: clamp(m.dosage, 255),
+        frequency: clamp(m.frequency, 255),
+        duration: clamp(m.duration, 255),
+        route: clamp(m.route, 100),
+        rxnormId: clamp(m.rxnormId, 50),
+        isActive: m.isActive ?? true,
+        prescribedDate: safeDate(m.prescribedDate),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  const diagnosisRows = data.diagnoses
+    .map((d) => {
+      const condition = clamp(d.condition, 500);
+      if (!condition) return null;
+      return {
+        documentId,
+        userId,
+        condition,
+        icd10Code: clamp(d.icd10Code, 50),
+        severity: clamp(d.severity, 100),
+        notes: d.notes ?? null,
+        diagnosedDate: safeDate(d.diagnosedDate),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  const labResultRows = data.labResults
+    .map((l) => {
+      const testName = clamp(l.testName, 500);
+      if (!testName) return null;
+
+      const rawValue = l.value ?? (l.numericValue != null ? String(l.numericValue) : undefined);
+      const value = clamp(rawValue, 100);
+      if (!value) return null;
+
+      return {
+        documentId,
+        userId,
+        testName,
+        value,
+        numericValue: l.numericValue ?? null,
+        unit: clamp(l.unit, 100),
+        referenceRange: clamp(l.referenceRange, 255),
+        isAbnormal: l.isAbnormal ?? false,
+        testDate: safeDate(l.testDate) ?? fallbackDate,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  const allergyRows = data.allergies
+    .map((a) => {
+      const allergen = clamp(a.allergen, 500);
+      if (!allergen) return null;
+      return {
+        documentId,
+        userId,
+        allergen,
+        allergyType: clamp(a.allergyType, 100),
+        severity: clamp(a.severity, 100),
+        reaction: a.reaction ?? null,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  return { medicationRows, diagnosisRows, labResultRows, allergyRows };
+}
+
 async function insertExtractedEntities(
   documentId: string,
   userId: string,
-  data: StructuredExtraction
+  data: ValidatedExtraction,
+  fallbackDate: Date
 ): Promise<void> {
-  const safeDate = (val: unknown): Date | null => {
-    if (!val) return null;
-    const d = new Date(String(val));
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
-
-  const medicationRows = data.medications.map((m) => ({
+  const { medicationRows, diagnosisRows, labResultRows, allergyRows } = buildEntityRows(
     documentId,
     userId,
-    name: m.name,
-    genericName: m.genericName ?? null,
-    dosage: m.dosage ?? null,
-    frequency: m.frequency ?? null,
-    duration: m.duration ?? null,
-    route: m.route ?? null,
-    rxnormId: m.rxnormId ?? null,
-    isActive: m.isActive ?? true,
-    prescribedDate: safeDate(m.prescribedDate),
-  }));
-
-  const diagnosisRows = data.diagnoses.map((d) => ({
-    documentId,
-    userId,
-    condition: d.condition,
-    icd10Code: d.icd10Code ?? null,
-    severity: d.severity ?? null,
-    notes: d.notes ?? null,
-    diagnosedDate: safeDate(d.diagnosedDate),
-  }));
-
-  const labResultRows = data.labResults.map((l) => {
-    let numVal: number | null = null;
-    if (l.numericValue != null) {
-      const parsed = Number(String(l.numericValue).replace(/,/g, ''));
-      numVal = Number.isFinite(parsed) ? Math.round(parsed) : null;
-    }
-    return {
-      documentId,
-      userId,
-      testName: l.testName,
-      value: String(l.value),
-      numericValue: numVal,
-      unit: l.unit ?? null,
-      referenceRange: l.referenceRange ?? null,
-      isAbnormal: l.isAbnormal ?? false,
-      testDate: safeDate(l.testDate) ?? new Date(),
-    };
-  });
-
-  const allergyRows = data.allergies.map((a) => ({
-    documentId,
-    userId,
-    allergen: a.allergen,
-    allergyType: a.allergyType ?? null,
-    severity: a.severity ?? null,
-    reaction: a.reaction ?? null,
-  }));
+    data,
+    fallbackDate
+  );
 
   const inserts: Promise<unknown>[] = [];
   if (medicationRows.length > 0) inserts.push(getDb().insert(medications).values(medicationRows));
@@ -330,6 +403,28 @@ async function insertExtractedEntities(
   if (allergyRows.length > 0) inserts.push(getDb().insert(allergies).values(allergyRows));
 
   await Promise.all(inserts);
+}
+
+/** Reprocessing runs the full pipeline again, so prior derived rows must be cleared first. */
+async function clearDerivedData(
+  documentId: string,
+  options: { includeImaging: boolean }
+): Promise<void> {
+  const deletions: Promise<unknown>[] = [
+    getDb().delete(documentChunks).where(eq(documentChunks.documentId, documentId)),
+    getDb().delete(medications).where(eq(medications.documentId, documentId)),
+    getDb().delete(diagnoses).where(eq(diagnoses.documentId, documentId)),
+    getDb().delete(labResults).where(eq(labResults.documentId, documentId)),
+    getDb().delete(allergies).where(eq(allergies.documentId, documentId)),
+  ];
+
+  if (options.includeImaging) {
+    deletions.push(
+      getDb().delete(imagingFindings).where(eq(imagingFindings.documentId, documentId))
+    );
+  }
+
+  await Promise.all(deletions);
 }
 
 // ── Generate embeddings and store chunks ─────────────────────────────────────
@@ -342,7 +437,7 @@ async function embedAndStoreChunks(
   if (chunks.length === 0) return;
 
   const texts = chunks.map((c) => c.content);
-  const embeddings = await embeddingProvider.embedBatch(texts);
+  const embeddings = await embeddingProvider.embedBatch(texts, 'passage');
 
   const rows = chunks.map((chunk, i) => ({
     documentId,
@@ -359,11 +454,9 @@ async function embedAndStoreChunks(
 
 // ── Main orchestrator ───────────────────────────────────────────────────────
 
-export async function processDocument(
-  documentId: string,
-  userId: string
-): Promise<void> {
-  const [doc] = await getDb()    .select()
+export async function processDocument(documentId: string, userId: string): Promise<void> {
+  const [doc] = await getDb()
+    .select()
     .from(documents)
     .where(eq(documents.id, documentId))
     .limit(1);
@@ -373,68 +466,131 @@ export async function processDocument(
   }
 
   try {
-    await getDb()      .update(documents)
+    await getDb()
+      .update(documents)
       .set({ extractionStatus: 'processing', updatedAt: new Date() })
       .where(eq(documents.id, documentId));
 
+    await clearDerivedData(documentId, { includeImaging: true });
+
     const buffer = await localStorage.read(doc.storagePath);
+    const extraction = await extractText(buffer, doc.mimeType, doc.documentType);
+    const text = extraction.text.trim();
+    const confidence = extraction.confidence ?? null;
 
-    const extraction = await extractText(buffer, doc.mimeType);
-
-    if (extraction.isScanned) {
-      await getDb()        .update(documents)
+    if (!text) {
+      await getDb()
+        .update(documents)
         .set({
           extractionStatus: 'needs_review',
-          isScannedPdf: true,
-          extractionNotes: 'Scanned PDF detected — image-based OCR required',
+          isScannedPdf: extraction.isScanned ?? doc.isScannedPdf,
+          rawExtractedText: '',
+          extractionConfidence: confidence,
+          extractionNotes:
+            'No readable text could be extracted from this file. Try uploading a sharper photo or scan.',
           updatedAt: new Date(),
         })
         .where(eq(documents.id, documentId));
       return;
     }
 
-    const text = extraction.text;
-
-    await getDb()      .update(documents)
+    await getDb()
+      .update(documents)
       .set({
         rawExtractedText: text,
         isHandwritten: extraction.isHandwritten ?? doc.isHandwritten,
-        extractionConfidence: extraction.confidence ?? null,
+        isScannedPdf: extraction.isScanned ?? doc.isScannedPdf,
+        extractionConfidence: confidence,
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
 
-    const structured = await extractStructuredData(text, doc.documentType);
+    const raw = await extractStructuredData(text, doc.documentType);
+    const reconciliation = await reconcileExtraction(text, raw);
+    const structured = reconciliation.extraction;
+    const documentDate = safeDate(structured.documentDate) ?? doc.documentDate;
 
-    await getDb()      .update(documents)
+    await getDb()
+      .update(documents)
       .set({
         structuredData: structured as unknown as Record<string, unknown>,
-        hospital: structured.hospital ?? doc.hospital,
-        doctorName: structured.doctorName ?? doc.doctorName,
-        documentDate: structured.documentDate
-          ? new Date(structured.documentDate)
-          : doc.documentDate,
+        hospital: clamp(structured.hospital, 500) ?? doc.hospital,
+        doctorName: clamp(structured.doctorName, 255) ?? doc.doctorName,
+        documentDate,
         language: structured.language ?? doc.language,
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
 
-    await insertExtractedEntities(documentId, userId, structured);
+    const notes: string[] = [...reconciliation.notes];
+    const lowConfidence = confidence !== null && confidence < LOW_CONFIDENCE_THRESHOLD;
+
+    if (lowConfidence) {
+      notes.push(
+        `OCR confidence was low (${confidence}%). Medications and lab values were not added to your health record yet — review the extracted text and confirm to save them.`
+      );
+    } else {
+      await insertExtractedEntities(documentId, userId, structured, documentDate ?? new Date());
+    }
+
+    if (extraction.radiologyFindings && extraction.radiologyFindings.length > 0) {
+      const validated = validateFindings(extraction.radiologyFindings);
+      const findingRows = validated.map((f) => ({
+        documentId,
+        userId,
+        bodyPart: clamp(f.bodyPart, 200) ?? 'unknown',
+        modality: doc.documentType === 'imaging_report' ? 'x-ray' : null,
+        finding: f.finding,
+        location: clamp(f.location, 300),
+        severity: clamp(f.severity, 100),
+        description: f.description ?? null,
+        aiConfidence: Math.round(f.confidence),
+        urgencyLevel: f.urgencyLevel,
+        validationNotes: f.validationNotes,
+        validated: f.validated,
+      }));
+      await getDb().insert(imagingFindings).values(findingRows);
+    }
 
     const chunks = chunkDocument(text, {
       documentType: doc.documentType,
       hospital: structured.hospital ?? doc.hospital ?? undefined,
-      date: structured.documentDate ?? (doc.documentDate?.toISOString() ?? undefined),
+      date: documentDate?.toISOString().slice(0, 10),
     });
 
     await embedAndStoreChunks(documentId, userId, chunks);
 
-    await getDb()      .update(documents)
-      .set({ extractionStatus: 'confirmed', updatedAt: new Date() })
+    if (isExtractionEmpty(structured)) {
+      notes.push('No medical entities were identified in this document — please review the extracted text.');
+    }
+    if (extraction.isHandwritten) {
+      notes.push('Handwritten content detected — please verify drug names and numbers against the original.');
+    }
+
+    const needsReview = lowConfidence || isExtractionEmpty(structured);
+
+    const summary = await generateDocumentSummary({
+      text,
+      extraction: structured,
+      documentType: doc.documentType,
+      language: structured.language ?? doc.language ?? 'mixed',
+      isHandwritten: extraction.isHandwritten ?? doc.isHandwritten ?? false,
+      confidence,
+    });
+
+    await getDb()
+      .update(documents)
+      .set({
+        summary,
+        extractionStatus: needsReview ? 'needs_review' : 'confirmed',
+        extractionNotes: notes.length > 0 ? notes.join(' ') : null,
+        updatedAt: new Date(),
+      })
       .where(eq(documents.id, documentId));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    await getDb()      .update(documents)
+    await getDb()
+      .update(documents)
       .set({
         extractionStatus: 'failed',
         extractionNotes: `Processing failed: ${message}`,
@@ -442,5 +598,62 @@ export async function processDocument(
       })
       .where(eq(documents.id, documentId));
     throw error;
+  }
+}
+
+/**
+ * Applies text/entity corrections the user confirmed in the review UI: entities held back
+ * during low-confidence extraction are written now, and chunks are re-embedded so the
+ * corrected text is what RAG actually searches.
+ */
+export async function applyConfirmedExtraction(
+  documentId: string,
+  userId: string
+): Promise<void> {
+  const [doc] = await getDb()
+    .select()
+    .from(documents)
+    .where(eq(documents.id, documentId))
+    .limit(1);
+
+  if (!doc) {
+    throw new Error(`Document not found: ${documentId}`);
+  }
+
+  const structured = parseStructuredExtraction(doc.structuredData);
+  const text = (doc.rawExtractedText ?? '').trim();
+
+  await clearDerivedData(documentId, { includeImaging: false });
+
+  await insertExtractedEntities(
+    documentId,
+    userId,
+    structured,
+    doc.documentDate ?? new Date()
+  );
+
+  if (text) {
+    const chunks = chunkDocument(text, {
+      documentType: doc.documentType,
+      hospital: doc.hospital ?? undefined,
+      date: doc.documentDate?.toISOString().slice(0, 10),
+    });
+    await embedAndStoreChunks(documentId, userId, chunks);
+
+    const summary = await generateDocumentSummary({
+      text,
+      extraction: structured,
+      documentType: doc.documentType,
+      language: structured.language ?? doc.language ?? 'mixed',
+      isHandwritten: doc.isHandwritten ?? false,
+      confidence: doc.extractionConfidence,
+    });
+
+    if (summary) {
+      await getDb()
+        .update(documents)
+        .set({ summary, updatedAt: new Date() })
+        .where(eq(documents.id, documentId));
+    }
   }
 }
