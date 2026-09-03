@@ -419,3 +419,41 @@ APIConnectionTimeoutError: Request timed out.
 ◇ injected env (8) from .env.local // tip: ⌘ suppress logs { quiet: true }
 fixture: .tmp-probe/hard-rx.jpg (2 KB)
 
+InternalServerError: 503 {"error":{"message":"qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.","type":"internal_server_error"}}
+    at APIError.generate (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/core/error.ts:88:14)
+    at Groq.makeStatusError (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:286:28)
+    at Groq.makeRequest (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/node_modules/groq-sdk/src/client.ts:506:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async singlePass (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:72:20)
+    at async main (/Users/apple/Documents/Qoder/2026-08-31/313fcea6/tabeeb/.tmp-probe/compare-passes.mts:108:15) {
+  status: 503,
+  headers: Headers {
+    date: 'Thu, 03 Sep 2026 17:31:51 GMT',
+    'content-type': 'application/json',
+    'content-length': '213',
+    connection: 'keep-alive',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    server: 'cloudflare',
+    vary: 'Origin',
+    'x-groq-region': 'dmm',
+    'x-ratelimit-limit-requests': '1000',
+    'x-ratelimit-limit-tokens': '8000',
+    'x-ratelimit-remaining-requests': '962',
+    'x-ratelimit-remaining-tokens': '4556',
+    'x-ratelimit-reset-requests': '54m43.2s',
+    'x-ratelimit-reset-tokens': '25.83s',
+    'x-request-id': 'req_01m1m56gf1e8db9wh2xd4yekx7',
+    via: '1.1 google',
+    'cf-cache-status': 'DYNAMIC',
+    'set-cookie': '__cf_bm=ZhfW55U.PrWsAHzVrSb2uXzRLQXxqyw7CeTvvRREDLk-1788456681.9348686-1.0.1.1-KgCyHnTaScCxhoL_DNfQ6S0ZKtmfO_vU6fgGn8XH5FfpM27hjDra8NwfiQUb90rNSOcL1VzeGoVvtfGUjT9PRWMqAz8OVlzHghyBDiH.3B8eWYJ9yAMwqjjTGbg6jbhx; HttpOnly; SameSite=None; Secure; Path=/; Domain=groq.com; Expires=Thu, 03 Sep 2026 18:01:51 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    'cf-ray': 'a3567cd61ae1b7f7-KHI',
+    'alt-svc': 'h3=":443"; ma=86400'
+  },
+  error: {
+    error: {
+      message: 'qwen/qwen3.8-27b is currently over capacity. Please try again and back off exponentially. Visit https://groqstatus.com to see if there is an active incident.',
+      type: 'internal_server_error'
+    }
+  }
+}
