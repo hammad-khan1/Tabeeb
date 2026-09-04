@@ -137,7 +137,9 @@ export class OnnxRadiologyClassifier implements RadiologyClassifier {
     }
   }
 
-  async classify(image: Buffer): Promise<ClassificationResult> {
+  // mimeType is part of the RadiologyClassifier contract and used by the HTTP
+  // backend; sharp sniffs the format from the bytes, so it is unused here.
+  async classify(image: Buffer, _mimeType: string): Promise<ClassificationResult> {
     const { isDiscriminating, selectFlagged } = await import('./classifier');
 
     try {
