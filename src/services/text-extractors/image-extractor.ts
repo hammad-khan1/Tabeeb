@@ -238,17 +238,30 @@ async function classifyRadiologyImage(
   const normalized = await normalizeForVision(buffer, mimeType);
   const classifier = await resolveRadiologyClassifier();
 
-  // Two complementary reads, because they answer different questions.
-  //
-  // The classifier returns calibrated probabilities, but only for chest pathologies —
-  // it is blind to a foot, an ankle or a wrist, which is most of what gets uploaded.
-  // MedGemma covers any body region but writes prose, so its output is kept as a
-  // description and never becomes a scored finding.
-  const [classification, description] = await Promise.all([
-    classifier.classify(normalized.buffer, normalized.mimeType),
-    describeRadiograph(normalized.buffer),
-  ]);
+  // Describe first, because the description says which part of the body this is, and
+  // that decides whether the chest classifier may run at all.
+  const description = await describeRadiograph(normalized.buffer);
 
+  // The chest classifier scores chest pathologies on whatever pixels it is given. Run
+  // unguarded it reported pneumonia at 73% on a photograph of a leg — confident,
+  // structured and entirely fabricated. It only runs when the image is a chest.
+  if (description.bodyRegion !== 'chest') {
+    return {
+      findings: [],
+      classification: {
+        scores: [],
+        flagged: [],
+        modelId: classifier.modelId,
+        unavailableReason:
+          description.bodyRegion === 'unknown'
+            ? 'The screening model only reads chest X-rays, and the part of the body in this image could not be identified, so no screening was performed.'
+            : `The screening model only reads chest X-rays, and this appears to be a ${description.bodyRegion} X-ray, so no screening was performed.`,
+      },
+      description,
+    };
+  }
+
+  const classification = await classifier.classify(normalized.buffer, normalized.mimeType);
   return { findings: buildFindings(classification), classification, description };
 }
 

@@ -483,6 +483,11 @@ async function getPreferredLanguage(userId: string): Promise<'en' | 'ur' | 'mixe
   return row?.preferredLanguage ?? null;
 }
 
+/** An empty extraction, for image-only documents that have no text to parse. */
+function structuredExtractionFallback(): ValidatedExtraction {
+  return parseStructuredExtraction({});
+}
+
 async function loadOwnedDocument(documentId: string, userId: string) {
   const [doc] = await getDb()
     .select()
@@ -517,7 +522,16 @@ export async function processDocument(documentId: string, userId: string): Promi
     const text = extraction.text.trim();
     const confidence = extraction.confidence ?? null;
 
-    if (!text) {
+    // An X-ray usually carries no text at all, so "no text" is not a failure for one —
+    // and returning here threw away the image analysis that had already been computed
+    // a few lines above. That is why a clean radiograph came back saying only "no
+    // readable text could be extracted".
+    const hasImageAnalysis = Boolean(
+      extraction.radiographDescription?.description ||
+        (extraction.radiologyFindings && extraction.radiologyFindings.length > 0)
+    );
+
+    if (!text && !hasImageAnalysis) {
       await getDb()
         .update(documents)
         .set({
@@ -527,6 +541,49 @@ export async function processDocument(documentId: string, userId: string): Promi
           extractionConfidence: confidence,
           extractionNotes:
             'No readable text could be extracted from this file. Try uploading a sharper photo or scan.',
+          updatedAt: new Date(),
+        })
+        .where(eq(documents.id, documentId));
+      return;
+    }
+
+    if (!text && hasImageAnalysis) {
+      // Nothing to extract entities from or embed, but the image itself was read.
+      const imageNotes = [
+        buildDescriptionNote(extraction.radiographDescription!) ?? '',
+        extraction.classification ? buildImagingNote(extraction.classification) : '',
+      ].filter(Boolean);
+
+      const imagingRows = (extraction.radiologyFindings ?? []).map((f) => ({
+        documentId,
+        userId,
+        bodyPart: clamp(f.bodyPart, 200) ?? 'unknown',
+        modality: 'x-ray',
+        finding: f.finding,
+        location: clamp(f.location ?? undefined, 300),
+        severity: clamp(f.severity, 100),
+        description: f.description,
+        aiConfidence: Math.round(f.confidence),
+        urgencyLevel: f.urgencyLevel,
+        validationNotes: f.validationNotes,
+        validated: f.validated,
+      }));
+
+      await rebuildDerivedData(documentId, userId, structuredExtractionFallback(), new Date(), {
+        includeImaging: true,
+        insertEntities: false,
+        imagingRows,
+      });
+
+      await getDb()
+        .update(documents)
+        .set({
+          documentType: 'imaging_report',
+          extractionStatus: 'confirmed',
+          rawExtractedText: '',
+          extractionConfidence: confidence,
+          extractionNotes: imageNotes.join('\n\n'),
+          processingStartedAt: null,
           updatedAt: new Date(),
         })
         .where(eq(documents.id, documentId));

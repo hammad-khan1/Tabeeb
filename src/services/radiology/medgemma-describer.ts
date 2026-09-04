@@ -24,6 +24,22 @@ const DEFAULT_MODEL = 'medgemma:4b';
 /** Local inference on a 4B model; slow but not unbounded. */
 const REQUEST_TIMEOUT_MS = 180_000;
 
+/** Body regions the description model is asked to choose between. */
+export type BodyRegion =
+  | 'chest'
+  | 'abdomen'
+  | 'spine'
+  | 'upper limb'
+  | 'lower limb'
+  | 'skull'
+  | 'pelvis'
+  | 'other'
+  | 'unknown';
+
+const BODY_REGIONS: readonly BodyRegion[] = [
+  'chest', 'abdomen', 'spine', 'upper limb', 'lower limb', 'skull', 'pelvis', 'other',
+];
+
 export interface RadiographDescription {
   /** Plain-language account of what is visible. Never a diagnosis. */
   description: string;
@@ -32,6 +48,12 @@ export interface RadiographDescription {
   unavailableReason?: string;
   /** True when the model reassured despite being told not to, and was corrected. */
   reassuranceCorrected?: boolean;
+  /**
+   * Which part of the body this is. Gates the chest classifier, which otherwise scores
+   * chest pathologies on whatever pixels it is handed — it reported pneumonia at 73%
+   * on a leg X-ray.
+   */
+  bodyRegion: BodyRegion;
 }
 
 const SYSTEM_PROMPT = `You are helping a patient understand what their X-ray image shows. You are not a radiologist and you are not making a diagnosis.
@@ -49,7 +71,12 @@ Hard rules:
 - Do not invent measurements, dates, or clinical detail that is not visible.
 - Never reassure. Do not say anything looks normal or healthy — you are not able to rule anything out.
 - End with one sentence telling the patient this needs a doctor's reading.
-- Keep it under 200 words.`;
+- Keep it under 200 words.
+
+Begin your reply with a single line of exactly this form, then a blank line, then the description:
+REGION: <one of: chest, abdomen, spine, upper limb, lower limb, skull, pelvis, other>
+
+If you cannot tell which part of the body it is, write "REGION: other".`;
 
 /**
  * Reassurance the model emits despite being told not to.
@@ -61,16 +88,49 @@ Hard rules:
  *
  * Prompt instructions alone did not hold, so the output is checked.
  */
+const NEGATIVE_FINDING =
+  '(?:break|breaks|fracture|fractures|dislocation|dislocations|abnormalit(?:y|ies)|damage|injur(?:y|ies)|problem|problems|issue|issues)';
+
 const REASSURANCE = [
   /\b(?:appears?|looks?|seems?)\b[^.!?]{0,40}\b(?:normal|unremarkable|healthy|fine|intact|okay|ok)\b/i,
-  /\bno (?:obvious |apparent |clear |visible |significant )?(?:break|breaks|fracture|fractures|abnormalit(?:y|ies)|damage|injur(?:y|ies)|problem|problems)\b/i,
-  /\b(?:nothing|no evidence)\b[^.!?]{0,30}\b(?:concerning|abnormal|wrong|worrying)\b/i,
+  // "no obvious fracture"
+  new RegExp(
+    `\\bno (?:obvious |apparent |clear |visible |significant |definite )?${NEGATIVE_FINDING}\\b`,
+    'i'
+  ),
+  // "does not appear to be any obvious fractures" / "cannot see any breaks" — the
+  // phrasing the model actually produced, which the "no <finding>" pattern missed.
+  // "cannot" has no word boundary before "not", so it needs listing explicitly.
+  new RegExp(
+    `(?:\\bnot\\b|n't|\\bwithout\\b|\\bcannot\\b|\\bunable to\\b)[^.!?]{0,50}\\b(?:any |obvious |apparent |visible )*${NEGATIVE_FINDING}\\b`,
+    'i'
+  ),
+  /\b(?:nothing|no evidence|no sign)\b[^.!?]{0,40}\b(?:concerning|abnormal|wrong|worrying|broken|fractur)/i,
   /\bwithin normal limits\b/i,
-  /\b(?:bones?|structures?)\b[^.!?]{0,30}\bintact\b/i,
+  /\b(?:bones?|structures?|alignment)\b[^.!?]{0,30}\b(?:intact|preserved|maintained)\b/i,
 ];
 
 function containsReassurance(text: string): boolean {
   return REASSURANCE.some((pattern) => pattern.test(text));
+}
+
+/** Test seam for the guard, which is otherwise only reachable through a model call. */
+export const __testContainsReassurance = containsReassurance;
+
+/**
+ * Pulls the REGION line off the front of the reply. An unparseable or missing region
+ * becomes 'unknown', which is treated as "not a chest" — the safe direction, since the
+ * only thing gated on it is whether the chest classifier is allowed to run.
+ */
+function splitRegion(raw: string): { bodyRegion: BodyRegion; description: string } {
+  const match = raw.match(/^\s*REGION:\s*([a-z ]+)\s*$/im);
+  const description = raw.replace(/^\s*REGION:.*$/im, '').trim();
+
+  if (!match) return { bodyRegion: 'unknown', description: raw.trim() };
+
+  const stated = match[1].trim().toLowerCase();
+  const region = BODY_REGIONS.find((candidate) => candidate === stated);
+  return { bodyRegion: region ?? 'unknown', description };
 }
 
 interface OllamaResponse {
@@ -102,7 +162,12 @@ export async function describeRadiograph(
   const model = modelId();
 
   if (!isMedGemmaConfigured()) {
-    return { description: '', modelId: model, unavailableReason: 'Image description is disabled.' };
+    return {
+      description: '',
+      modelId: model,
+      bodyRegion: 'unknown',
+      unavailableReason: 'Image description is disabled.',
+    };
   }
 
   const instruction = bodyPartHint
@@ -131,33 +196,47 @@ export async function describeRadiograph(
       return {
         description: '',
         modelId: model,
+        bodyRegion: 'unknown',
         unavailableReason: `The image description model returned ${response.status}. ${detail}`,
       };
     }
 
     const payload = (await response.json()) as OllamaResponse;
     if (payload.error) {
-      return { description: '', modelId: model, unavailableReason: payload.error };
+      return { description: '', modelId: model, bodyRegion: 'unknown', unavailableReason: payload.error };
     }
 
-    const description = payload.message?.content?.trim() ?? '';
+    const raw = payload.message?.content?.trim() ?? '';
+    if (!raw) {
+      return {
+        description: '',
+        modelId: model,
+        bodyRegion: 'unknown',
+        unavailableReason: 'The image description model returned nothing.',
+      };
+    }
+
+    const { bodyRegion, description } = splitRegion(raw);
     if (!description) {
       return {
         description: '',
         modelId: model,
-        unavailableReason: 'The image description model returned nothing.',
+        bodyRegion,
+        unavailableReason: 'The image description model returned nothing usable.',
       };
     }
 
     return {
       description,
       modelId: model,
+      bodyRegion,
       reassuranceCorrected: containsReassurance(description),
     };
   } catch (error) {
     return {
       description: '',
       modelId: model,
+      bodyRegion: 'unknown',
       unavailableReason: `The image description model could not be reached: ${
         error instanceof Error ? error.message : 'unknown error'
       }`,
