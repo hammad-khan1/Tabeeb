@@ -58,6 +58,51 @@ export function uploadDir(): string {
   return dir;
 }
 
+export interface S3Config {
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  /** Required for R2/B2/MinIO; omit for plain AWS S3. */
+  endpoint?: string;
+  /** Key prefix, always ends with '/' when non-empty. */
+  prefix: string;
+}
+
+/**
+ * Object storage config, or null when the app should use local disk.
+ *
+ * All four core variables must be present together — a half-configured bucket that
+ * silently falls back to local disk would look fine in development and lose every
+ * uploaded document on the first serverless deploy.
+ */
+export function s3Config(): S3Config | null {
+  const bucket = process.env.S3_BUCKET?.trim();
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
+
+  if (!bucket && !accessKeyId && !secretAccessKey) return null;
+
+  if (!bucket || !accessKeyId || !secretAccessKey) {
+    throw new Error(
+      'Object storage is partially configured. S3_BUCKET, S3_ACCESS_KEY_ID and ' +
+        'S3_SECRET_ACCESS_KEY must all be set, or all be empty to use local disk.'
+    );
+  }
+
+  const rawPrefix = process.env.S3_PREFIX?.trim() ?? '';
+  const prefix = rawPrefix && !rawPrefix.endsWith('/') ? `${rawPrefix}/` : rawPrefix;
+
+  return {
+    bucket,
+    region: process.env.S3_REGION?.trim() || 'auto',
+    accessKeyId,
+    secretAccessKey,
+    endpoint: process.env.S3_ENDPOINT?.trim() || undefined,
+    prefix,
+  };
+}
+
 /**
  * Model ids are pinned in one place and overridable without a code change, because
  * hosted model ids get retired and a stale id fails every request that uses it.
@@ -77,7 +122,9 @@ export function assertServerConfig(): void {
   }
 
   try {
-    uploadDir();
+    // Only relevant when falling back to local disk; with object storage configured
+    // the upload directory is never touched.
+    if (!s3Config()) uploadDir();
   } catch (error) {
     problems.push(error instanceof Error ? error.message : String(error));
   }

@@ -18,6 +18,7 @@ Built with **Next.js 16 (App Router)**, **TypeScript**, **Drizzle ORM + PostgreS
 - [Setup & Installation](#setup--installation)
 - [Environment Variables](#environment-variables)
 - [Available Scripts](#available-scripts)
+- [Deploying](#deploying)
 - [File-by-File Reference](#file-by-file-reference)
 - [Notes on Repo Housekeeping Files](#notes-on-repo-housekeeping-files)
 
@@ -251,6 +252,28 @@ Tests (179) cover the clinical value and reference-range parsing, the lab analyt
 catalogue, medical NER, reconciliation, drug/allergy interaction logic, X-ray
 finding construction, storage path handling, request validation, rate limiting,
 model-failure classification, and share-link scoping.
+
+## Deploying
+
+The app runs on any Node host. Two things must be settled before a real deploy:
+
+**Storage.** Local disk does not survive on a serverless platform — those filesystems
+are recreated per invocation, so uploaded documents would vanish. Set the `S3_*`
+variables to use object storage instead; any S3-compatible service works (Cloudflare
+R2, AWS S3, Backblaze B2, MinIO). R2 is the usual choice at small scale: 10GB free and
+no egress charges, which matters when the payload is scans people re-open. A
+half-configured bucket raises at startup rather than silently falling back to disk and
+losing everything on the first deploy.
+
+**Instance count.** Rate limiting and the chat response cache are in-process, so across
+several instances each enforces its own limits and the cache is often cold. Both are
+correct on a single instance, and the limiter's `consume()` is a drop-in replacement
+when Redis becomes worth it. Background document processing uses `after()`, which
+survives the response returning but not an instance dying mid-run; the stalled-job
+sweeper recovers those on the next request.
+
+At small scale a single instance plus Neon plus R2 is a complete, correct deployment.
+Nothing in the code needs to change to scale past that — only the two pieces above.
 
 ## File-by-File Reference
 

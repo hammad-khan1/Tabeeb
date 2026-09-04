@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile, writeFile, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { localStorage } from './storage';
-import { uploadDir } from './env';
+import { uploadDir, s3Config } from './env';
 
 /**
  * Storage is the fix for the finding that uploaded medical documents were written
@@ -105,5 +105,60 @@ describe('localStorage', () => {
     await localStorage.deleteAll('../');
 
     expect(await readFile(path.join(root, 'keep', 'file.txt'), 'utf8')).toBe('kept');
+  });
+});
+
+describe('s3Config', () => {
+  const saved = { ...process.env };
+
+  afterEach(() => {
+    for (const key of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'S3_REGION', 'S3_ENDPOINT', 'S3_PREFIX']) {
+      delete process.env[key];
+      if (saved[key] !== undefined) process.env[key] = saved[key];
+    }
+  });
+
+  it('returns null when nothing is configured, so local disk is used', () => {
+    delete process.env.S3_BUCKET;
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
+    expect(s3Config()).toBeNull();
+  });
+
+  it('throws on a half-configured bucket rather than silently using local disk', () => {
+    // Falling back silently would look fine in development and lose every uploaded
+    // document on the first serverless deploy.
+    process.env.S3_BUCKET = 'tabeeb-docs';
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
+    expect(() => s3Config()).toThrow(/partially configured/i);
+  });
+
+  it('builds a config when fully set', () => {
+    process.env.S3_BUCKET = 'tabeeb-docs';
+    process.env.S3_ACCESS_KEY_ID = 'key';
+    process.env.S3_SECRET_ACCESS_KEY = 'secret';
+    process.env.S3_ENDPOINT = 'https://account.r2.cloudflarestorage.com';
+
+    expect(s3Config()).toMatchObject({
+      bucket: 'tabeeb-docs',
+      endpoint: 'https://account.r2.cloudflarestorage.com',
+      region: 'auto',
+    });
+  });
+
+  it('normalises the key prefix to end with a slash', () => {
+    process.env.S3_BUCKET = 'b';
+    process.env.S3_ACCESS_KEY_ID = 'k';
+    process.env.S3_SECRET_ACCESS_KEY = 's';
+    process.env.S3_PREFIX = 'documents';
+    expect(s3Config()?.prefix).toBe('documents/');
+  });
+
+  it('leaves an empty prefix empty', () => {
+    process.env.S3_BUCKET = 'b';
+    process.env.S3_ACCESS_KEY_ID = 'k';
+    process.env.S3_SECRET_ACCESS_KEY = 's';
+    expect(s3Config()?.prefix).toBe('');
   });
 });

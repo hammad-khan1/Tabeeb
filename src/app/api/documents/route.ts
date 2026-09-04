@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
 import { errorResponse, badRequest } from '@/lib/api-error';
 import { consume } from '@/lib/rate-limit';
-import { localStorage } from '@/lib/storage';
+import { getStorage } from '@/lib/storage';
 import {
   createDocumentFieldsSchema,
   listDocumentsSchema,
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
-    const storagePath = await localStorage.save(userId, `${Date.now()}_${safeName}`, buffer);
+    const storagePath = await getStorage().save(userId, `${Date.now()}_${safeName}`, buffer);
 
     let doc;
     try {
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         .returning();
     } catch (error) {
       // Don't leave an orphaned file behind if the row could not be written.
-      await localStorage.delete(storagePath);
+      await getStorage().delete(storagePath);
       throw error;
     }
 

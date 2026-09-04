@@ -16,6 +16,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1126.0",
     "@base-ui/react": "^1.7.0",
     "@clerk/nextjs": "^7.8.3",
     "@radix-ui/react-dialog": "^1.1.23",
@@ -60,8 +61,8 @@
     "eslint-config-next": "16.3.3",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5",
-    "vitest": "^4.1.11",
-    "tsx": "^4.20.6"
+    "vitest": "^4.1.11"
   }
 }

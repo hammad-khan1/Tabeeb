@@ -3,7 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
 import { errorResponse } from '@/lib/api-error';
-import { localStorage } from '@/lib/storage';
+import { getStorage } from '@/lib/storage';
 import { documents } from '../../../../../../drizzle/schema';
 
 /**
@@ -35,7 +35,7 @@ export async function GET(
 
     let data: Buffer;
     try {
-      data = await localStorage.read(doc.storagePath);
+      data = await getStorage().read(doc.storagePath);
     } catch {
       return NextResponse.json(
         { error: 'The stored file for this document is missing.' },

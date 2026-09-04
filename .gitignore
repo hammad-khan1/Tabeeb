@@ -48,3 +48,7 @@ next-env.d.ts
 
 # local file storage (must stay out of /public)
 /.data/
+
+# python sidecar virtualenv and downloaded model weights
+services/xray-classifier/.venv/
+services/xray-classifier/__pycache__/

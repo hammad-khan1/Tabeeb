@@ -82,6 +82,14 @@ const URGENT_THRESHOLD = 0.35;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
+ * Free-tier hosts (HuggingFace Spaces, Render, Fly) suspend an idle container and
+ * take 30-60s to wake it. The first request after a quiet period therefore times out
+ * or returns a 503 through no fault of the image, so one retry with a long timeout
+ * covers the wake-up. This is what makes a free host viable rather than maddening.
+ */
+const COLD_START_TIMEOUT_MS = 90_000;
+
+/**
  * Model label → canonical pathology. Different checkpoints spell these differently
  * ("pleural_effusion", "Effusion", "LABEL_4"), so anything unmapped is dropped rather
  * than guessed at.
@@ -154,17 +162,30 @@ class HuggingFaceClassifier implements RadiologyClassifier {
       return this.unavailable('No HuggingFace API key is configured.');
     }
 
-    let payload: unknown;
-    try {
-      const response = await fetch(this.endpoint, {
+    const send = (timeoutMs: number) =>
+      fetch(this.endpoint, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': mimeType,
         },
         body: new Uint8Array(image),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
+
+    let payload: unknown;
+    try {
+      let response = await send(REQUEST_TIMEOUT_MS).catch((error: unknown) => {
+        // A timeout on a sleeping container is not a failure yet.
+        if (error instanceof Error && error.name === 'TimeoutError') return null;
+        throw error;
+      });
+
+      // 503 is what a waking container returns while it boots.
+      if (response === null || response.status === 503) {
+        console.warn('[Radiology] classifier appears to be waking, retrying');
+        response = await send(COLD_START_TIMEOUT_MS);
+      }
 
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 200);

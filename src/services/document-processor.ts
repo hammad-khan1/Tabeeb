@@ -10,7 +10,7 @@ import {
   allergies,
   imagingFindings,
 } from '../../drizzle/schema';
-import { localStorage } from '@/lib/storage';
+import { getStorage } from '@/lib/storage';
 import { getGroq, MODELS } from '@/lib/groq';
 import { embeddingProvider } from '@/lib/embeddings';
 import { extractText } from '@/services/text-extractors';
@@ -511,7 +511,7 @@ export async function processDocument(documentId: string, userId: string): Promi
     // Derived rows are deliberately NOT cleared here. They are replaced in one
     // transaction once the new set is ready, so a failure part-way leaves the
     // previous good extraction in place rather than an empty record.
-    const buffer = await localStorage.read(doc.storagePath);
+    const buffer = await getStorage().read(doc.storagePath);
     const extraction = await extractText(buffer, doc.mimeType, doc.documentType);
     const text = extraction.text.trim();
     const confidence = extraction.confidence ?? null;

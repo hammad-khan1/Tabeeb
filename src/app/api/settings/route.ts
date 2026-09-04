@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
 import { errorResponse } from '@/lib/api-error';
-import { localStorage } from '@/lib/storage';
+import { getStorage } from '@/lib/storage';
 import { parseJsonBody, settingsSchema } from '@/lib/validation';
 import { users } from '../../../../drizzle/schema';
 
@@ -61,7 +61,7 @@ export async function DELETE() {
     // Files first: deleting the user cascades the document rows away, and without
     // their storagePath the files on disk become unreachable orphans. This is what
     // made "delete all my data" leave every uploaded scan behind.
-    await localStorage.deleteAll(userId);
+    await getStorage().deleteAll(userId);
 
     // Cascades to documents, chunks, medications, diagnoses, labs, allergies,
     // imaging findings, chat messages, insights, interaction checks and share links.

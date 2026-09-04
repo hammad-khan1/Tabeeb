@@ -3,7 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
 import { errorResponse, notFound } from '@/lib/api-error';
-import { localStorage } from '@/lib/storage';
+import { getStorage } from '@/lib/storage';
 import { parseJsonBody, parseOrThrow, updateDocumentSchema, uuidParamSchema } from '@/lib/validation';
 import { documents, imagingFindings } from '../../../../../drizzle/schema';
 
@@ -87,7 +87,7 @@ export async function DELETE(
 
     if (!deleted) throw notFound('Document not found');
 
-    await localStorage.delete(deleted.storagePath);
+    await getStorage().delete(deleted.storagePath);
 
     return NextResponse.json({ success: true, id });
   } catch (error) {
