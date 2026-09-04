@@ -1,3 +1,5 @@
+import { parseReferenceRange } from '@/lib/medical-values';
+
 interface DataPoint {
   value: number;
   date: Date;
@@ -84,32 +86,27 @@ function findAnomalies(values: number[], mean: number, stdDev: number): Anomaly[
     .filter((a) => a.deviation > 2);
 }
 
-function parseReferenceRange(rangeStr: string): { min: number; max: number } | null {
-  const match = rangeStr.match(/([\d.]+)\s*[-–—]\s*([\d.]+)/);
-  if (!match) return null;
-  return { min: parseFloat(match[1]), max: parseFloat(match[2]) };
-}
-
-function compareReference(values: number[], referenceRange: string): ReferenceComparison {
+function compareReference(values: number[], referenceRange: string): ReferenceComparison | null {
   const parsed = parseReferenceRange(referenceRange);
-  if (!parsed) {
-    return { withinRange: false, belowRange: 0, aboveRange: 0 };
-  }
+  // A qualitative or unreadable range yields no comparison at all. Returning zero
+  // counts here previously read as "nothing out of range", which is the opposite of
+  // "could not tell".
+  if (!parsed || (parsed.min === null && parsed.max === null)) return null;
 
   let belowRange = 0;
   let aboveRange = 0;
 
   for (const v of values) {
-    if (v < parsed.min) belowRange++;
-    else if (v > parsed.max) aboveRange++;
+    if (parsed.min !== null && v < parsed.min) belowRange++;
+    else if (parsed.max !== null && v > parsed.max) aboveRange++;
   }
 
   return {
     withinRange: belowRange === 0 && aboveRange === 0,
     belowRange,
     aboveRange,
-    rangeMin: parsed.min,
-    rangeMax: parsed.max,
+    rangeMin: parsed.min ?? undefined,
+    rangeMax: parsed.max ?? undefined,
   };
 }
 
@@ -121,7 +118,10 @@ export function analyzeLabTrend(dataPoints: DataPoint[]): TrendAnalysisResult {
   const trendDirection = classifyTrend(slope, stdDev, mean);
   const anomalies = findAnomalies(values, mean, stdDev);
 
-  const referenceRange = dataPoints.find((d) => d.referenceRange)?.referenceRange;
+  // Prefer the most recent range: labs change their reference intervals over time.
+  const referenceRange = [...dataPoints]
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .find((d) => d.referenceRange)?.referenceRange;
   const referenceComparison = referenceRange
     ? compareReference(values, referenceRange)
     : null;

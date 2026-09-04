@@ -1,4 +1,5 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray, type SQL } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db';
 import {
   documents,
@@ -59,30 +60,68 @@ export interface MedicalHistorySummary {
   recentLabResults: LabResultEntry[];
   visitTimeline: TimelineEvent[];
   documentCount: number;
+  /** True when the summary was limited to a subset of documents, e.g. a scoped share. */
+  isPartial: boolean;
 }
 
+/**
+ * When `documentIds` is given, EVERY section is restricted to those documents — not
+ * just the timeline. Scoping only the timeline (as this previously did for shares)
+ * meant a patient sharing one lab report handed over their entire medication list,
+ * diagnoses and allergies.
+ */
 export async function getMedicalHistorySummary(
-  userId: string
+  userId: string,
+  documentIds?: string[]
 ): Promise<MedicalHistorySummary> {
+  const scoped = documentIds !== undefined;
+
+  // An explicit empty scope must return nothing, not silently widen to everything.
+  if (scoped && documentIds.length === 0) {
+    return {
+      conditions: [],
+      currentMedications: [],
+      allergies: [],
+      recentLabResults: [],
+      visitTimeline: [],
+      documentCount: 0,
+      isPartial: true,
+    };
+  }
+
+  const scopeBy = (column: AnyPgColumn): SQL | undefined =>
+    scoped ? inArray(column, documentIds) : undefined;
+
   const [docs, meds, diags, labs, allergyRows] = await Promise.all([
-    getDb()      .select()
+    getDb()
+      .select()
       .from(documents)
-      .where(eq(documents.userId, userId))
+      .where(and(eq(documents.userId, userId), scopeBy(documents.id)))
       .orderBy(desc(documents.documentDate)),
-    getDb()      .select()
+    getDb()
+      .select()
       .from(medications)
-      .where(and(eq(medications.userId, userId), eq(medications.isActive, true))),
-    getDb()      .select()
+      .where(
+        and(
+          eq(medications.userId, userId),
+          eq(medications.isActive, true),
+          scopeBy(medications.documentId)
+        )
+      ),
+    getDb()
+      .select()
       .from(diagnoses)
-      .where(eq(diagnoses.userId, userId))
+      .where(and(eq(diagnoses.userId, userId), scopeBy(diagnoses.documentId)))
       .orderBy(desc(diagnoses.diagnosedDate)),
-    getDb()      .select()
+    getDb()
+      .select()
       .from(labResults)
-      .where(eq(labResults.userId, userId))
+      .where(and(eq(labResults.userId, userId), scopeBy(labResults.documentId)))
       .orderBy(desc(labResults.testDate)),
-    getDb()      .select()
+    getDb()
+      .select()
       .from(allergies)
-      .where(eq(allergies.userId, userId)),
+      .where(and(eq(allergies.userId, userId), scopeBy(allergies.documentId))),
   ]);
 
   const conditions: ConditionEntry[] = diags.map((d) => ({
@@ -156,5 +195,6 @@ export async function getMedicalHistorySummary(
     recentLabResults,
     visitTimeline,
     documentCount: docs.length,
+    isPartial: scoped,
   };
 }

@@ -240,6 +240,40 @@ export default function DocumentDetailPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left: Metadata */}
         <div className="space-y-4">
+          {/* The original scan. Files live outside ./public now, so this goes through
+              the authenticated route that re-checks ownership on every request. */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Original document</CardTitle>
+              <a
+                href={`/api/documents/${id}/file?download=1`}
+                className="text-sm text-primary underline underline-offset-4"
+              >
+                Download
+              </a>
+            </CardHeader>
+            <CardContent>
+              {String(doc.mimeType).startsWith("image/") ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/documents/${id}/file`}
+                  alt={`Scan of ${doc.title}`}
+                  className="max-h-[28rem] w-full rounded-md border object-contain"
+                />
+              ) : doc.mimeType === "application/pdf" ? (
+                <iframe
+                  src={`/api/documents/${id}/file`}
+                  title={`Scan of ${doc.title}`}
+                  className="h-[28rem] w-full rounded-md border"
+                />
+              ) : (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  {String(doc.fileName)} cannot be previewed here. Use Download to open it.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Document Info</CardTitle>

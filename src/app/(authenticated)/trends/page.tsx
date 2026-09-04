@@ -32,17 +32,6 @@ import {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-interface HistoryData {
-  recentLabResults: Array<{
-    testName: string;
-    value: string;
-    numericValue?: number | null;
-    unit?: string | null;
-    referenceRange?: string | null;
-    isAbnormal?: boolean | null;
-    testDate: string;
-  }>;
-}
 
 interface DataPoint {
   value: number;
@@ -109,14 +98,26 @@ const trendColors: Record<string, string> = {
   fluctuating: "text-purple-600",
 };
 
-export default function TrendsPage() {
-  const { data: history, isLoading: historyLoading } =
-    useSWR<HistoryData>("/api/history", fetcher);
+interface AnalyteOption {
+  key: string;
+  display: string;
+  unit: string | null;
+  count: number;
+}
 
-  const availableTests = useMemo(() => {
-    if (!history?.recentLabResults) return [];
-    return [...new Set(history.recentLabResults.map((r) => r.testName))];
-  }, [history]);
+export default function TrendsPage() {
+  // The list comes from /api/trends rather than from raw testName values in the
+  // history summary: analytes are deduplicated server-side, so "HbA1c", "HBA1C" and
+  // "Glycated Haemoglobin" appear once instead of as three separate options.
+  const { data: testList, isLoading: historyLoading } = useSWR<{ tests: AnalyteOption[] }>(
+    "/api/trends",
+    fetcher
+  );
+
+  const availableTests = useMemo(
+    () => (testList?.tests ?? []).filter((t) => t.count > 0),
+    [testList]
+  );
 
   const [selectedTest, setSelectedTest] = useState<string>("");
 
@@ -185,8 +186,11 @@ export default function TrendsPage() {
           </SelectTrigger>
           <SelectContent>
             {availableTests.map((test) => (
-              <SelectItem key={test} value={test}>
-                {test}
+              <SelectItem key={test.key} value={test.display}>
+                {test.display}
+                <span className="ml-2 text-muted-foreground tabular-nums">
+                  {test.count}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

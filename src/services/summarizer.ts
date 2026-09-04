@@ -1,4 +1,4 @@
-import { groq, MODELS } from '@/lib/groq';
+import { getGroq, MODELS } from '@/lib/groq';
 import type { ValidatedExtraction } from '@/services/extraction-schema';
 
 /**
@@ -124,7 +124,7 @@ export async function generateDocumentSummary(input: SummaryInput): Promise<stri
     .join('\n');
 
   try {
-    const response = await groq.chat.completions.create({
+    const response = await getGroq().chat.completions.create({
       model: MODELS.primary,
       messages: [
         { role: 'system', content: SUMMARY_SYSTEM_PROMPT },

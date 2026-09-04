@@ -9,6 +9,8 @@ interface DocumentFilters {
   from?: string;
   to?: string;
   search?: string;
+  limit?: number;
+  offset?: number;
 }
 
 interface DocumentRecord {
@@ -23,11 +25,14 @@ interface DocumentRecord {
   fileName: string;
   mimeType: string;
   fileSize: number;
-  storagePath: string;
   extractionStatus: string;
-  rawExtractedText: string | null;
+  // Only returned by the single-document endpoint; the list omits both to keep the
+  // payload small.
+  rawExtractedText?: string | null;
+  structuredData?: Record<string, unknown> | null;
+  /** Authenticated download URL; the file is no longer served statically. */
+  fileUrl?: string;
   summary: string | null;
-  structuredData: Record<string, unknown> | null;
   extractionConfidence: number | null;
   extractionNotes: string | null;
   isHandwritten: boolean;
@@ -44,18 +49,43 @@ function buildQueryString(filters?: DocumentFilters): string {
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   if (filters.search) params.set("search", filters.search);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset !== undefined) params.set("offset", String(filters.offset));
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+async function fetcher(url: string) {
+  const res = await fetch(url);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "Request failed");
+  return body;
+}
+
+interface DocumentListResponse {
+  documents: DocumentRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
 
 export function useDocuments(filters?: DocumentFilters) {
   const key = `/api/documents${buildQueryString(filters)}`;
 
-  const { data, error, isLoading, isValidating } = useSWR<DocumentRecord[]>(
+  const { data, error, isLoading, isValidating } = useSWR<DocumentListResponse>(
     key,
-    fetcher
+    fetcher,
+    {
+      // A document is processed in the background, so its status changes after the
+      // upload response has already been returned.
+      refreshInterval: (latest) =>
+        latest?.documents.some(
+          (d) => d.extractionStatus === "pending" || d.extractionStatus === "processing"
+        )
+          ? 4000
+          : 0,
+    }
   );
 
   const uploadDocument = useCallback(
@@ -76,7 +106,9 @@ export function useDocuments(filters?: DocumentFilters) {
   );
 
   return {
-    documents: data ?? [],
+    documents: data?.documents ?? [],
+    total: data?.total ?? 0,
+    hasMore: data?.hasMore ?? false,
     error,
     isLoading,
     isValidating,

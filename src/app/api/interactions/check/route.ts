@@ -1,23 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
 import { errorResponse } from '@/lib/api-error';
+import { consume } from '@/lib/rate-limit';
+import { interactionCheckSchema, parseJsonBody } from '@/lib/validation';
 import { checkInteractions } from '@/services/interactions/checker';
+
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
-    const { query } = await request.json();
+    consume('interactions', userId);
 
-    if (!query || typeof query !== 'string') {
-      return NextResponse.json(
-        { error: 'Query is required' },
-        { status: 400 }
-      );
-    }
+    const { query } = await parseJsonBody(interactionCheckSchema, request);
 
-    const results = await checkInteractions(userId, query);
-
-    return NextResponse.json(results);
+    return NextResponse.json(await checkInteractions(userId, query));
   } catch (error) {
     return errorResponse('POST /api/interactions/check', error, 'Interaction check failed');
   }

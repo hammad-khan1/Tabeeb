@@ -32,7 +32,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { DOCUMENT_TYPE_LABELS, MAX_FILE_SIZE, SUPPORTED_FILE_TYPES } from "@/lib/constants";
+import {
+  DOCUMENT_TYPE_LABELS,
+  MAX_FILE_SIZE,
+  SUPPORTED_MIME_TYPES,
+  SUPPORTED_FILE_TYPES_LABEL,
+  UPLOAD_ACCEPT_ATTRIBUTE,
+} from "@/lib/constants";
 import { useDocuments } from "@/hooks/use-documents";
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 
@@ -73,21 +79,29 @@ export default function UploadPage() {
     duration,
   } = useVoiceRecorder();
 
-  const acceptedMimes = Object.keys(SUPPORTED_FILE_TYPES);
-  const acceptedExtensions = ".pdf,.jpg,.jpeg,.png,.docx,.txt";
+  // Both this list and the server's validation come from one map in lib/constants,
+  // so the picker can no longer block formats the extractor handles — HEIC in
+  // particular, which is what an iPhone produces when photographing a prescription.
+  const acceptedExtensions = UPLOAD_ACCEPT_ATTRIBUTE;
 
-  const validateFile = useCallback(
-    (f: File): string | null => {
-      if (!acceptedMimes.includes(f.type) && !f.name.match(/\.(pdf|jpg|jpeg|png|docx|txt)$/i)) {
-        return "Unsupported file type. Please upload PDF, JPG, PNG, DOCX, or TXT files.";
-      }
-      if (f.size > MAX_FILE_SIZE) {
-        return `File is too large. Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`;
-      }
-      return null;
-    },
-    [acceptedMimes]
-  );
+  const validateFile = useCallback((f: File): string | null => {
+    const mime = (f.type || "").toLowerCase().split(";")[0].trim();
+    // Browsers report HEIC inconsistently and sometimes send no type at all, so an
+    // extension match is accepted as a fallback. The server still checks the MIME.
+    const byExtension = /\.(pdf|jpe?g|png|webp|tiff?|bmp|gif|heic|heif|docx|txt|csv|md|tsv)$/i.test(
+      f.name
+    );
+    if (!SUPPORTED_MIME_TYPES.has(mime) && !byExtension) {
+      return `Unsupported file type. Accepted: ${SUPPORTED_FILE_TYPES_LABEL}.`;
+    }
+    if (f.size === 0) {
+      return "That file is empty.";
+    }
+    if (f.size > MAX_FILE_SIZE) {
+      return `File is too large. Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`;
+    }
+    return null;
+  }, []);
 
   const handleFile = useCallback(
     (f: File) => {
@@ -279,7 +293,7 @@ export default function UploadPage() {
                 }}
               />
               <p className="mt-4 text-xs text-muted-foreground">
-                Accepted: PDF, JPG, PNG, DOCX, TXT (max {formatFileSize(MAX_FILE_SIZE)})
+                Accepted: {SUPPORTED_FILE_TYPES_LABEL} (max {formatFileSize(MAX_FILE_SIZE)})
               </p>
             </div>
           </CardContent>

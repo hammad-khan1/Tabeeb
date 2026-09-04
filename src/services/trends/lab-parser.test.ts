@@ -99,18 +99,83 @@ describe('parseLabResults', () => {
 
 describe('groupByTest', () => {
   it('groups results by lowercase test name', () => {
-    const results = [
-      { testName: 'Glucose', value: '95', numericValue: 95, unit: 'mg/dL', referenceRange: null, isAbnormal: false, testDate: '2024-01-01' },
-      { testName: 'glucose', value: '100', numericValue: 100, unit: 'mg/dL', referenceRange: null, isAbnormal: false, testDate: '2024-02-01' },
-      { testName: 'HbA1c', value: '5.7', numericValue: 5.7, unit: '%', referenceRange: null, isAbnormal: false, testDate: '2024-01-01' },
-    ];
+    const results = parseLabResults({
+      labResults: [
+        { testName: 'Glucose', value: '95', unit: 'mg/dL', testDate: '2024-01-01' },
+        { testName: 'glucose', value: '100', unit: 'mg/dL', testDate: '2024-02-01' },
+        { testName: 'HbA1c', value: '5.7', unit: '%', testDate: '2024-01-01' },
+      ],
+    });
     const groups = groupByTest(results);
     expect(groups.size).toBe(2);
     expect(groups.get('glucose')).toHaveLength(2);
     expect(groups.get('hba1c')).toHaveLength(1);
   });
 
+  it('groups spelling variants of one analyte into a single series', () => {
+    const results = parseLabResults({
+      labResults: [
+        { testName: 'HbA1c', value: '7.1' },
+        { testName: 'HBA1C', value: '7.4' },
+        { testName: 'Hb A1c', value: '6.9' },
+        { testName: 'Glycated Haemoglobin', value: '7.2' },
+      ],
+    });
+    const groups = groupByTest(results);
+    expect(groups.size).toBe(1);
+    expect(groups.get('hba1c')).toHaveLength(4);
+  });
+
   it('returns empty map for empty input', () => {
     expect(groupByTest([]).size).toBe(0);
+  });
+});
+
+describe('clinical value parsing', () => {
+  it('keeps digit-group separators out of the number', () => {
+    // Lakh grouping is standard on Pakistani CBC reports; parseFloat stopped at the
+    // first comma and stored a platelet count of 150,000 as 1.
+    const [result] = parseLabResults({
+      labResults: [{ testName: 'Platelets', value: '1,50,000', unit: '/cumm' }],
+    });
+    expect(result.numericValue).toBe(150000);
+  });
+
+  it('preserves a censoring marker instead of dropping it', () => {
+    const [result] = parseLabResults({ labResults: [{ testName: 'HbA1c', value: '<5.7' }] });
+    expect(result.numericValue).toBe(5.7);
+    expect(result.censoring).toBe('<');
+  });
+
+  it('flags a value outside a one-sided reference range', () => {
+    const [result] = parseLabResults({
+      labResults: [{ testName: 'TSH', value: '8.2', referenceRange: 'up to 4.2' }],
+    });
+    expect(result.isAbnormal).toBe(true);
+    expect(result.abnormalityKnown).toBe(true);
+  });
+
+  it('does not claim normality when the range cannot be read', () => {
+    const [result] = parseLabResults({
+      labResults: [{ testName: 'Culture', value: '3', referenceRange: 'see comment' }],
+    });
+    expect(result.isAbnormal).toBe(false);
+    expect(result.abnormalityKnown).toBe(false);
+  });
+
+  it('converts a known analyte into its canonical unit', () => {
+    const [result] = parseLabResults({
+      labResults: [{ testName: 'Creatinine', value: '88.4', unit: 'umol/L' }],
+    });
+    expect(result.canonicalUnit).toBe('mg/dL');
+    expect(result.canonicalValue).toBeCloseTo(1.0, 2);
+  });
+
+  it('leaves an unknown analyte ungrouped rather than guessing', () => {
+    const [result] = parseLabResults({
+      labResults: [{ testName: 'Serum Widgetase', value: '4' }],
+    });
+    expect(result.canonicalTestName).toBeNull();
+    expect(result.displayName).toBe('Serum Widgetase');
   });
 });

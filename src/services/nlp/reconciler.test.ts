@@ -76,7 +76,7 @@ describe('reconcileExtraction', () => {
     expect(result.missedEntities).toEqual([]);
   });
 
-  it('applies the RxNorm spelling correction and records it in the notes', async () => {
+  it('records the RxNorm identification in the notes without rewriting the name', async () => {
     const extraction = parseStructuredExtraction({
       medications: [{ name: 'Metformim' }],
     });
@@ -90,8 +90,12 @@ describe('reconcileExtraction', () => {
 
     expect(result.extraction.medications[0].rxnormId).toBe('6809');
     expect(result.extraction.medications[0].genericName).toBe('metformin');
-    expect(result.correctedDrugCount).toBe(1);
+    // The verbatim reading survives — it is what the patient can check against the paper.
+    expect(result.extraction.medications[0].name).toBe('Metformim');
+    expect(result.identifiedDrugCount).toBe(1);
     expect(result.notes.join(' ')).toContain('RxNorm');
+    // The note must not claim a correction the code does not make.
+    expect(result.notes.join(' ')).not.toContain('corrected');
   });
 
   it('does not overwrite a generic name the model already supplied', async () => {

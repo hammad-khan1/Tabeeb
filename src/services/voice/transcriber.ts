@@ -1,4 +1,4 @@
-import { groq, MODELS } from '@/lib/groq';
+import { getGroq, MODELS } from '@/lib/groq';
 
 export interface TranscriptionResult {
   text: string;
@@ -18,7 +18,7 @@ export async function transcribeAudio(
 ): Promise<TranscriptionResult> {
   const file = new File([new Uint8Array(audioBuffer)], fileName);
 
-  const response = await groq.audio.transcriptions.create({
+  const response = await getGroq().audio.transcriptions.create({
     file,
     model: MODELS.whisper,
     response_format: 'verbose_json',

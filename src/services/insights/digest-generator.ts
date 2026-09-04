@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { getDb } from '@/lib/db';
-import { groq, MODELS } from '@/lib/groq';
+import { getGroq, MODELS } from '@/lib/groq';
 import {
   documents,
   medications,
@@ -26,6 +27,27 @@ interface HealthDigestResult {
   priority: string;
   generatedAt: Date;
 }
+
+/**
+ * The model's JSON was cast to the interface and written straight to the database, so
+ * a missing `findings` array or an out-of-range `priority` reached Postgres unchecked.
+ */
+const digestSchema = z.object({
+  title: z.string().trim().min(1).max(500).catch('Health insight digest'),
+  digest: z.string().trim().min(1).max(20_000).catch('No summary generated.'),
+  findings: z
+    .array(
+      z.object({
+        category: z.enum(['medications', 'labs', 'diagnoses', 'allergies', 'general']).catch('general'),
+        title: z.string().trim().min(1).max(300),
+        detail: z.string().trim().max(4000).catch(''),
+        priority: z.enum(['info', 'attention', 'action_needed']).catch('info'),
+      })
+    )
+    .max(50)
+    .catch([]),
+  priority: z.enum(['normal', 'elevated', 'urgent']).optional().catch(undefined),
+});
 
 const DIGEST_SYSTEM_PROMPT = `You are a medical analyst AI reviewing a patient's complete health record. Analyze the provided data and generate actionable health insights.
 
@@ -150,7 +172,7 @@ export async function generateHealthDigest(userId: string): Promise<HealthDigest
   const patientSummary = buildPatientSummary(data);
   const documentIds = data.documents.map((d) => d.id);
 
-  const response = await groq.chat.completions.create({
+  const response = await getGroq().chat.completions.create({
     model: MODELS.primary,
     messages: [
       { role: 'system', content: DIGEST_SYSTEM_PROMPT },
@@ -169,21 +191,23 @@ export async function generateHealthDigest(userId: string): Promise<HealthDigest
     throw new Error('Empty response from digest generation model');
   }
 
-  const parsed = JSON.parse(content) as {
-    title: string;
-    digest: string;
-    findings: HealthFinding[];
-    priority?: string;
-  };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(content);
+  } catch {
+    throw new Error('Digest model returned malformed JSON');
+  }
 
-  const findings = parsed.findings ?? [];
+  const parsed = digestSchema.parse(raw);
+  const findings: HealthFinding[] = parsed.findings;
   const priority = parsed.priority ?? determinePriority(findings);
 
-  const [inserted] = await getDb()    .insert(healthInsights)
+  const [inserted] = await getDb()
+    .insert(healthInsights)
     .values({
       userId,
-      title: parsed.title ?? 'Health Insight Digest',
-      digest: parsed.digest ?? 'No summary generated.',
+      title: parsed.title,
+      digest: parsed.digest,
       documentIdsReviewed: documentIds,
       findings: findings as unknown as Record<string, unknown>,
       priority,

@@ -1,5 +1,7 @@
+import { SUPPORTED_FILE_TYPES, type FileKind } from '@/lib/constants';
 import { extractFromPdf } from './pdf-extractor';
 import { extractFromImage, ocrImage, type RadiologyFinding } from './image-extractor';
+import type { ClassificationResult } from '@/services/radiology/classifier';
 import { extractFromDocx } from './docx-extractor';
 
 export interface ExtractionResult {
@@ -8,29 +10,14 @@ export interface ExtractionResult {
   isHandwritten?: boolean;
   confidence?: number;
   radiologyFindings?: RadiologyFinding[];
+  /** Present for imaging documents: what the X-ray classifier did or could not check. */
+  classification?: ClassificationResult;
 }
 
-const PDF_MIMES = ['application/pdf'];
-const IMAGE_MIMES = [
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/tiff',
-  'image/bmp',
-  'image/gif',
-  'image/heic',
-  'image/heif',
-];
-const DOCX_MIMES = [
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-];
-const TEXT_MIMES = [
-  'text/plain',
-  'text/csv',
-  'text/markdown',
-  'text/tab-separated-values',
-];
+/** Dispatch is driven by the same map the uploader validates against, so the two cannot drift. */
+function fileKindFor(mimeType: string): FileKind | null {
+  return (SUPPORTED_FILE_TYPES as Record<string, FileKind>)[mimeType] ?? null;
+}
 
 const UNSUPPORTED_HINTS: Record<string, string> = {
   'application/msword':
@@ -95,8 +82,9 @@ export async function extractText(
   documentType?: string
 ): Promise<ExtractionResult> {
   const normalizedMime = mimeType.toLowerCase().split(';')[0].trim();
+  const kind = fileKindFor(normalizedMime);
 
-  if (PDF_MIMES.includes(normalizedMime)) {
+  if (kind === 'pdf') {
     const result = await extractFromPdf(buffer);
 
     if (!result.isScanned) {
@@ -110,22 +98,23 @@ export async function extractText(
     return ocrPdfPages(result.pageImages);
   }
 
-  if (IMAGE_MIMES.includes(normalizedMime)) {
+  if (kind === 'image') {
     const result = await extractFromImage(buffer, normalizedMime, documentType);
     return {
       text: result.text,
       isHandwritten: result.isHandwritten,
       confidence: result.confidence,
       radiologyFindings: result.radiologyFindings,
+      classification: result.classification,
     };
   }
 
-  if (DOCX_MIMES.includes(normalizedMime)) {
+  if (kind === 'docx') {
     const result = await extractFromDocx(buffer);
     return { text: result.text };
   }
 
-  if (TEXT_MIMES.includes(normalizedMime)) {
+  if (kind === 'text') {
     return { text: decodeTextBuffer(buffer) };
   }
 

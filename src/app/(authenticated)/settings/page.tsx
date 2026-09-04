@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import useSWR from "swr";
 import {
@@ -43,6 +44,7 @@ interface UserData {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { user: clerkUser } = useUser();
   const { data: userData, isLoading, mutate: mutateUser } = useSWR<UserData>(
     "/api/settings",
@@ -135,7 +137,10 @@ export default function SettingsPage() {
         const err = await res.json();
         throw new Error(err.error || "Delete failed");
       }
-      window.location.href = "/";
+      // Every cached page holds data that no longer exists, so refresh the router
+      // cache rather than only pushing.
+      router.replace("/");
+      router.refresh();
     } catch {
       setIsDeleting(false);
     }

@@ -28,9 +28,38 @@ const MIN_MODEL_SCORE = 0.45;
 
 // ── Deterministic clinical patterns ─────────────────────────────────────────
 
-/** Suffixes shared by drug ingredient names — a cheap, language-agnostic drug detector. */
+/**
+ * Suffixes shared by drug ingredient (stem) names — a cheap, language-agnostic drug
+ * detector. On its own it is far too loose: "-pril" matches "April", which appears on
+ * essentially every dated document, and the match was confident enough (0.7) to be
+ * reported back to the patient as a medicine that might be missing from their record.
+ *
+ * So a suffix match now only counts as a medication when the surrounding line also
+ * looks like a prescription — a dose, a frequency, or a dosage form beside it.
+ */
 const DRUG_SUFFIXES =
   /(?:cillin|mycin|micin|cycline|azole|azol|oxacin|floxacin|prazole|sartan|pril|olol|ipine|statin|metformin|glizide|gliptin|formin|dipine|semide|thiazide|parin|zepam|zolam|tidine|setron|profen|codone|caine|tinib|mab|nib)$/i;
+
+/**
+ * Words that end in a drug stem but are not drugs. Month names matter most: dates are
+ * on every document, and "April" ends in "-pril".
+ */
+const SUFFIX_STOP_WORDS = new Set([
+  'april', 'principal', 'nostril', 'tendril', 'nonprofit',
+  'domicile', 'reconcile', 'projectile', 'juvenile', 'infantile',
+  'hydrocarbon', 'carbon', 'ribbon',
+  'cocaine', // a substance, but not something to surface as a missed prescription
+  'migraine', 'romaine', 'certain', 'mountain', 'fountain',
+  'terminal', 'criminal', 'nominal', 'seminal',
+]);
+
+/** Evidence that a token sits in a prescription line rather than in prose. */
+const DOSE_EVIDENCE = /\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|g|ml|iu|units?)\b/i;
+const FREQUENCY_EVIDENCE =
+  /\b(?:od|bd|bid|tds|tid|qid|qds|hs|sos|prn|stat|once|twice|thrice|daily|nightly|weekly|hourly|every\s+\d+\s*(?:hours?|days?))\b/i;
+const FORM_EVIDENCE =
+  /\b(?:tabs?|tablets?|caps?|capsules?|syp|syrup|susp|suspension|inj|injection|drops?|cream|ointment|sachet|inhaler|patch|supp|pessary)\b\.?/i;
+const ROUTE_EVIDENCE = /\b(?:po|iv|im|sc|sl|pr|topical|oral(?:ly)?)\b/i;
 
 const KNOWN_CONDITIONS = [
   'diabetes', 'diabetes mellitus', 'type 2 diabetes', 'type 1 diabetes',
@@ -84,16 +113,43 @@ function collectMatches(
   }));
 }
 
+function hasPrescriptionContext(line: string): boolean {
+  return (
+    DOSE_EVIDENCE.test(line) ||
+    FREQUENCY_EVIDENCE.test(line) ||
+    FORM_EVIDENCE.test(line) ||
+    ROUTE_EVIDENCE.test(line)
+  );
+}
+
+/**
+ * Scans line by line so context is judged locally: a drug stem on a prescription line
+ * counts, the same stem in a sentence of prose does not.
+ */
 function findSuffixDrugs(text: string): MedicalEntity[] {
-  const words = text.match(/[\p{L}][\p{L}-]{4,}/gu) ?? [];
-  return words
-    .filter((word) => DRUG_SUFFIXES.test(word))
-    .map((word) => ({
-      text: word,
-      type: 'medication' as const,
-      score: 0.7,
-      source: 'rules' as const,
-    }));
+  const found: MedicalEntity[] = [];
+
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const inPrescriptionContext = hasPrescriptionContext(line);
+
+    for (const word of line.match(/[\p{L}][\p{L}-]{4,}/gu) ?? []) {
+      if (!DRUG_SUFFIXES.test(word)) continue;
+      if (SUFFIX_STOP_WORDS.has(word.toLowerCase())) continue;
+
+      found.push({
+        text: word,
+        type: 'medication',
+        // Without dose/frequency/form nearby the match is a weak hint. Scoring it
+        // below the reconciler's reporting threshold keeps it out of patient-facing
+        // notes while still letting a caller inspect it.
+        score: inPrescriptionContext ? 0.75 : 0.4,
+        source: 'rules',
+      });
+    }
+  }
+
+  return found;
 }
 
 export function extractEntitiesByRules(text: string): MedicalEntity[] {

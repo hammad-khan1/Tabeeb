@@ -43,6 +43,8 @@ export const documents = pgTable('documents', {
   fileSize: integer('file_size').notNull(),
   storagePath: varchar('storage_path', { length: 1000 }).notNull(),
   extractionStatus: extractionStatusEnum('extraction_status').default('pending'),
+  /** Set when processing begins; lets a sweeper find runs killed mid-flight. */
+  processingStartedAt: timestamp('processing_started_at'),
   rawExtractedText: text('raw_extracted_text'),
   summary: text('summary'),
   structuredData: jsonb('structured_data'),
@@ -57,6 +59,7 @@ export const documents = pgTable('documents', {
   index('documents_type_idx').on(table.documentType),
   index('documents_date_idx').on(table.documentDate),
   index('documents_hospital_idx').on(table.hospital),
+  index('documents_status_idx').on(table.extractionStatus),
 ]);
 
 export const documentChunks = pgTable('document_chunks', {
@@ -112,6 +115,11 @@ export const labResults = pgTable('lab_results', {
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
   userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   testName: varchar('test_name', { length: 500 }).notNull(),
+  /** Normalized analyte key ("hba1c") used for grouping; testName keeps the verbatim reading. */
+  canonicalTestName: varchar('canonical_test_name', { length: 200 }),
+  /** Value converted into the canonical unit for this analyte, when a conversion is known. */
+  canonicalValue: doublePrecision('canonical_value'),
+  canonicalUnit: varchar('canonical_unit', { length: 50 }),
   value: varchar('value', { length: 100 }).notNull(),
   numericValue: doublePrecision('numeric_value'),
   unit: varchar('unit', { length: 100 }),
@@ -121,6 +129,7 @@ export const labResults = pgTable('lab_results', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('lab_results_user_test_idx').on(table.userId, table.testName),
+  index('lab_results_user_canonical_idx').on(table.userId, table.canonicalTestName),
   index('lab_results_date_idx').on(table.testDate),
 ]);
 
@@ -172,7 +181,9 @@ export const shareLinks = pgTable('share_links', {
   isActive: boolean('is_active').default(true),
   viewCount: integer('view_count').default(0),
   createdAt: timestamp('created_at').defaultNow(),
-});
+}, (table) => [
+  index('share_links_user_idx').on(table.userId),
+]);
 
 export const chatMessages = pgTable('chat_messages', {
   id: uuid('id').defaultRandom().primaryKey(),

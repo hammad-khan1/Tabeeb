@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
-import { errorResponse } from '@/lib/api-error';
+import { errorResponse, notFound, badRequest } from '@/lib/api-error';
+import { consume } from '@/lib/rate-limit';
+import { parseOrThrow, uuidParamSchema } from '@/lib/validation';
+import { enqueueProcessing } from '@/services/processing-queue';
 import { documents } from '../../../../../../drizzle/schema';
-import { processDocument } from '@/services/document-processor';
+
+export const maxDuration = 300;
 
 export async function POST(
   request: NextRequest,
@@ -12,26 +16,30 @@ export async function POST(
 ) {
   try {
     const userId = await getCurrentUserId();
-    const { id } = await params;
+    consume('reprocess', userId);
+    const id = parseOrThrow(uuidParamSchema, (await params).id);
 
     const [doc] = await getDb()
-      .select()
+      .select({ id: documents.id, status: documents.extractionStatus })
       .from(documents)
       .where(and(eq(documents.id, id), eq(documents.userId, userId)))
       .limit(1);
 
-    if (!doc) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    if (!doc) throw notFound('Document not found');
+    if (doc.status === 'processing') {
+      throw badRequest('This document is already being processed.');
     }
 
     await getDb()
       .update(documents)
-      .set({ extractionStatus: 'pending', updatedAt: new Date() })
-      .where(eq(documents.id, id));
+      .set({ extractionStatus: 'pending', extractionNotes: null, updatedAt: new Date() })
+      .where(and(eq(documents.id, id), eq(documents.userId, userId)));
 
-    await processDocument(id, userId);
+    // Queued rather than awaited: the full pipeline is vision OCR of every page plus
+    // several model calls, which exceeds the request timeout on a multi-page scan.
+    enqueueProcessing(id, userId);
 
-    return NextResponse.json({ success: true, id });
+    return NextResponse.json({ success: true, id, status: 'pending' }, { status: 202 });
   } catch (error) {
     return errorResponse('POST /api/documents/[id]/reprocess', error, 'Reprocessing failed');
   }
