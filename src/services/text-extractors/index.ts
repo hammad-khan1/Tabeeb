@@ -2,6 +2,7 @@ import { SUPPORTED_FILE_TYPES, type FileKind } from '@/lib/constants';
 import { extractFromPdf } from './pdf-extractor';
 import { extractFromImage, ocrImage, type RadiologyFinding } from './image-extractor';
 import type { ClassificationResult } from '@/services/radiology/classifier';
+import type { RadiographDescription } from '@/services/radiology/medgemma-describer';
 import { extractFromDocx } from './docx-extractor';
 
 export interface ExtractionResult {
@@ -14,6 +15,8 @@ export interface ExtractionResult {
   classification?: ClassificationResult;
   /** True when the image looked like a radiograph but was not filed as one. */
   detectedAsRadiograph?: boolean;
+  /** Plain-language account of the image, for body parts the classifier cannot score. */
+  radiographDescription?: RadiographDescription;
 }
 
 /** Dispatch is driven by the same map the uploader validates against, so the two cannot drift. */
@@ -109,6 +112,7 @@ export async function extractText(
       radiologyFindings: result.radiologyFindings,
       classification: result.classification,
       detectedAsRadiograph: result.detectedAsRadiograph,
+      radiographDescription: result.radiographDescription,
     };
   }
 

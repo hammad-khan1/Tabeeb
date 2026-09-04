@@ -8,6 +8,7 @@ import {
 import { resolveRadiologyClassifier, type ClassificationResult } from '@/services/radiology/classifier';
 import { detectRadiograph } from '@/services/radiology/detect-radiograph';
 import { buildFindings, type ValidatedFinding } from '@/services/radiology/validator';
+import { describeRadiograph, type RadiographDescription } from '@/services/radiology/medgemma-describer';
 
 /**
  * Findings now come from `services/radiology/classifier`, a purpose-trained chest
@@ -24,6 +25,8 @@ export interface ImageExtractionResult {
   classification?: ClassificationResult;
   /** True when the image looked like a radiograph but was not filed as one. */
   detectedAsRadiograph?: boolean;
+  /** Plain-language account of the image, for body parts the classifier cannot score. */
+  radiographDescription?: RadiographDescription;
 }
 
 const VISION_MAX_TOKENS = 8192;
@@ -227,11 +230,26 @@ export async function ocrImage(buffer: Buffer, mimeType: string): Promise<OcrPas
 async function classifyRadiologyImage(
   buffer: Buffer,
   mimeType: string
-): Promise<{ findings: ValidatedFinding[]; classification: ClassificationResult }> {
+): Promise<{
+  findings: ValidatedFinding[];
+  classification: ClassificationResult;
+  description: RadiographDescription;
+}> {
   const normalized = await normalizeForVision(buffer, mimeType);
   const classifier = await resolveRadiologyClassifier();
-  const classification = await classifier.classify(normalized.buffer, normalized.mimeType);
-  return { findings: buildFindings(classification), classification };
+
+  // Two complementary reads, because they answer different questions.
+  //
+  // The classifier returns calibrated probabilities, but only for chest pathologies —
+  // it is blind to a foot, an ankle or a wrist, which is most of what gets uploaded.
+  // MedGemma covers any body region but writes prose, so its output is kept as a
+  // description and never becomes a scored finding.
+  const [classification, description] = await Promise.all([
+    classifier.classify(normalized.buffer, normalized.mimeType),
+    describeRadiograph(normalized.buffer),
+  ]);
+
+  return { findings: buildFindings(classification), classification, description };
 }
 
 export async function extractFromImage(
@@ -258,9 +276,10 @@ export async function extractFromImage(
   const detection = filedAsImaging ? null : await detectRadiograph(buffer);
 
   if (filedAsImaging || detection?.isRadiograph) {
-    const { findings, classification } = await classifyRadiologyImage(buffer, mimeType);
+    const { findings, classification, description } = await classifyRadiologyImage(buffer, mimeType);
     result.radiologyFindings = findings;
     result.classification = classification;
+    result.radiographDescription = description;
     result.detectedAsRadiograph = !filedAsImaging;
   }
 

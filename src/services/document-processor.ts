@@ -15,6 +15,7 @@ import { getGroq, MODELS } from '@/lib/groq';
 import { embeddingProvider } from '@/lib/embeddings';
 import { extractText } from '@/services/text-extractors';
 import { buildImagingNote } from '@/services/radiology/validator';
+import { buildDescriptionNote } from '@/services/radiology/medgemma-describer';
 import {
   parseStructuredExtraction,
   isExtractionEmpty,
@@ -601,7 +602,16 @@ export async function processDocument(documentId: string, userId: string): Promi
 
     // What the model did and did not check is stated on the document either way —
     // silence must never read to a patient as "your X-ray is clear".
-    if (extraction.classification) {
+    //
+    // The chest classifier only speaks to chest films. When it could not score the
+    // image but MedGemma described it, the description is what carries the value, so
+    // the classifier's "could not assess" is not repeated on top of it.
+    const descriptionNote = extraction.radiographDescription
+      ? buildDescriptionNote(extraction.radiographDescription)
+      : null;
+
+    if (descriptionNote) notes.push(descriptionNote);
+    if (extraction.classification && !(descriptionNote && extraction.classification.unavailableReason)) {
       notes.push(buildImagingNote(extraction.classification));
     }
 
