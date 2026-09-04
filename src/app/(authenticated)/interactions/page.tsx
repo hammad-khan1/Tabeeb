@@ -26,13 +26,23 @@ interface InteractionResult {
   items: string[];
   severity: "info" | "mild" | "moderate" | "severe" | "contraindicated";
   description: string;
+  /** Where the finding was derived from, so the reader can judge its weight. */
+  source: "rxnorm_ingredient" | "rxnorm_class" | "allergy_record";
 }
 
 interface InteractionResponse {
   interactions: InteractionResult[];
   summary: string;
   recommendation: string;
+  unverifiedItems: string[];
+  limitations: string[];
 }
+
+const SOURCE_LABELS: Record<InteractionResult["source"], string> = {
+  rxnorm_ingredient: "Same active ingredient · RxNorm",
+  rxnorm_class: "Same drug class · ATC",
+  allergy_record: "Matches your recorded allergy",
+};
 
 interface Medication {
   name: string;
@@ -215,12 +225,12 @@ export default function InteractionsPage() {
                 >
                   {isChecking ? (
                     <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      <Loader2 className="me-2 size-4 animate-spin" />
                       Checking...
                     </>
                   ) : (
                     <>
-                      <Search className="mr-2 size-4" />
+                      <Search className="me-2 size-4" />
                       Check
                     </>
                   )}
@@ -278,6 +288,26 @@ export default function InteractionsPage() {
                 </CardContent>
               </Card>
 
+              {/* What this check does not cover. Shown above the findings, because a
+                  short "no interactions found" is misleading without it. */}
+              {results.limitations.length > 0 && (
+                <Card className="border-amber-500/40 bg-amber-500/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">What this check covers</p>
+                        {results.limitations.map((limitation, i) => (
+                          <p key={i} className="text-sm text-muted-foreground">
+                            {limitation}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Interaction Cards */}
               {results.interactions.length === 0 ? (
                 <Card>
@@ -285,10 +315,10 @@ export default function InteractionsPage() {
                     <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                       <CheckCircle2 className="size-6" />
                     </div>
-                    <p className="font-medium">No interactions found</p>
+                    <p className="font-medium">Nothing flagged</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      No known interactions were detected with your current
-                      medications.
+                      No duplicate ingredient, drug class overlap or allergy match was
+                      found among the items checked.
                     </p>
                   </CardContent>
                 </Card>
@@ -323,6 +353,9 @@ export default function InteractionsPage() {
                                 </span>
                               </div>
                               <p className="mt-2 text-sm">{interaction.description}</p>
+                              <p className="mt-2 text-xs uppercase tracking-wide text-muted-foreground">
+                                {SOURCE_LABELS[interaction.source] ?? "Derived from your record"}
+                              </p>
                             </div>
                           </div>
                         </CardContent>

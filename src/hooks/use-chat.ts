@@ -106,14 +106,23 @@ export function useChat() {
           const payload = trimmed.slice(6);
           if (payload === "[DONE]") break;
 
+          let parsed: Record<string, unknown>;
           try {
-            const parsed = JSON.parse(payload);
+            parsed = JSON.parse(payload);
+          } catch {
+            // A partial frame; the buffer will complete it on the next read.
+            continue;
+          }
 
-            if (parsed.error) {
-              throw new Error(parsed.error);
-            }
+          // Raised outside the JSON.parse try: an error frame used to be thrown
+          // inside it and immediately swallowed by the "unparseable chunk" catch, so
+          // a failed stream showed the user nothing at all.
+          if (typeof parsed.error === "string") {
+            throw new Error(parsed.error);
+          }
 
-            if (parsed.conversationId && !conversationId) {
+          {
+            if (typeof parsed.conversationId === "string" && !conversationId) {
               setConversationId(parsed.conversationId);
             }
 
@@ -130,7 +139,7 @@ export function useChat() {
               );
             }
 
-            if (parsed.content) {
+            if (typeof parsed.content === "string" && parsed.content) {
               accumulated += parsed.content;
               const currentSources = sources.length > 0 ? [...sources] : undefined;
 
@@ -145,8 +154,6 @@ export function useChat() {
                 return updated;
               });
             }
-          } catch {
-            // Skip unparseable chunks
           }
         }
       }

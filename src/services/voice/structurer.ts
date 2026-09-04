@@ -1,4 +1,6 @@
-import { groq, MODELS } from '@/lib/groq';
+import { z } from 'zod';
+import { getGroq, MODELS } from '@/lib/groq';
+import { DOCUMENT_TYPES } from '@/lib/validation';
 
 export interface VoiceStructuredEntry {
   documentType: string;
@@ -22,10 +24,36 @@ Rules:
 - Use YYYY-MM-DD format for dates when identifiable
 - Do NOT invent data that is not present in the transcript`;
 
+/**
+ * The model's JSON was cast straight to the interface with no check, so a malformed
+ * or partial response propagated as a well-typed lie. `.catch()` on each field keeps
+ * a single bad field from discarding the whole transcript.
+ */
+const voiceEntrySchema = z.object({
+  documentType: z.enum(DOCUMENT_TYPES).catch('voice_entry'),
+  title: z.string().trim().min(1).max(200).catch('Voice note'),
+  description: z.string().trim().max(4000).catch(''),
+  medications: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(200),
+        dosage: z.string().trim().max(100).optional(),
+        frequency: z.string().trim().max(100).optional(),
+      })
+    )
+    .max(50)
+    .catch([]),
+  symptoms: z.array(z.string().trim().min(1).max(200)).max(50).catch([]),
+  date: z.string().trim().max(50).optional().catch(undefined),
+  doctorName: z.string().trim().max(200).optional().catch(undefined),
+  hospital: z.string().trim().max(200).optional().catch(undefined),
+  conditions: z.array(z.string().trim().min(1).max(200)).max(50).catch([]),
+});
+
 export async function structureVoiceEntry(
   transcript: string
 ): Promise<VoiceStructuredEntry> {
-  const response = await groq.chat.completions.create({
+  const response = await getGroq().chat.completions.create({
     model: MODELS.fast,
     messages: [
       { role: 'system', content: STRUCTURER_SYSTEM_PROMPT },
@@ -41,5 +69,12 @@ export async function structureVoiceEntry(
     throw new Error('Empty response from structuring model');
   }
 
-  return JSON.parse(content) as VoiceStructuredEntry;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(content);
+  } catch {
+    throw new Error('Structuring model returned malformed JSON');
+  }
+
+  return voiceEntrySchema.parse(raw);
 }

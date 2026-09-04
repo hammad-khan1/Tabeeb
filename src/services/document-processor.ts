@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import {
+  users,
   documents,
   documentChunks,
   medications,
@@ -9,11 +10,11 @@ import {
   allergies,
   imagingFindings,
 } from '../../drizzle/schema';
-import { localStorage } from '@/lib/storage';
-import { groq, MODELS } from '@/lib/groq';
+import { getStorage } from '@/lib/storage';
+import { getGroq, MODELS } from '@/lib/groq';
 import { embeddingProvider } from '@/lib/embeddings';
 import { extractText } from '@/services/text-extractors';
-import { validateFindings } from '@/services/radiology/validator';
+import { buildImagingNote } from '@/services/radiology/validator';
 import {
   parseStructuredExtraction,
   isExtractionEmpty,
@@ -22,7 +23,14 @@ import {
   type ValidatedExtraction,
 } from '@/services/extraction-schema';
 import { reconcileExtraction } from '@/services/nlp/reconciler';
+import { canonicalizeLab } from '@/services/nlp/lab-normalizer';
+import { parseMedicalValue, isOutOfRange } from '@/lib/medical-values';
 import { generateDocumentSummary } from '@/services/summarizer';
+import { estimateTokenCount } from '@/lib/tokens';
+import { classifyModelFailure, withModelRetry } from '@/lib/model-errors';
+
+// Re-exported for callers that already import it from here.
+export { estimateTokenCount };
 
 // ── Section detection patterns ──────────────────────────────────────────────
 
@@ -115,7 +123,8 @@ export async function extractStructuredData(
   text: string,
   documentType: string
 ): Promise<ValidatedExtraction> {
-  const response = await groq.chat.completions.create({
+  const response = await withModelRetry(
+    () => getGroq().chat.completions.create({
     model: MODELS.primary,
     messages: [
       { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
@@ -127,7 +136,9 @@ export async function extractStructuredData(
     temperature: 0.1,
     max_tokens: 8192,
     response_format: { type: 'json_object' },
-  });
+    }),
+    { label: 'Extraction' }
+  );
 
   const content = response.choices[0]?.message?.content;
   if (!content) {
@@ -163,19 +174,6 @@ function detectSection(text: string): string {
     if (pattern.test(text)) return name;
   }
   return 'General';
-}
-
-/** Arabic-script characters cost roughly one token per 2.5 chars vs 4 for Latin. */
-export function estimateTokenCount(text: string): number {
-  let arabicScript = 0;
-  for (const char of text) {
-    const codePoint = char.codePointAt(0)!;
-    if ((codePoint >= 0x0600 && codePoint <= 0x06ff) || (codePoint >= 0xfb50 && codePoint <= 0xfdff)) {
-      arabicScript += 1;
-    }
-  }
-  const latinish = text.length - arabicScript;
-  return Math.max(1, Math.ceil(arabicScript / 2.5 + latinish / 4));
 }
 
 function buildContextHeader(meta: ChunkMetadata, section: string): string {
@@ -351,15 +349,26 @@ function buildEntityRows(
       const value = clamp(rawValue, 100);
       if (!value) return null;
 
+      // Parse the printed string first: it carries digit grouping and censoring that
+      // the model's numericValue has usually already lost.
+      const numericValue =
+        parseMedicalValue(l.value)?.value ?? parseMedicalValue(l.numericValue)?.value ?? null;
+
+      const canonical = canonicalizeLab(testName, numericValue, l.unit ?? null);
+      const derivedAbnormal = isOutOfRange(numericValue, l.referenceRange ?? null);
+
       return {
         documentId,
         userId,
         testName,
+        canonicalTestName: canonical.canonicalTestName,
+        canonicalValue: canonical.canonicalValue,
+        canonicalUnit: clamp(canonical.canonicalUnit ?? undefined, 50),
         value,
-        numericValue: l.numericValue ?? null,
+        numericValue,
         unit: clamp(l.unit, 100),
         referenceRange: clamp(l.referenceRange, 255),
-        isAbnormal: l.isAbnormal ?? false,
+        isAbnormal: l.isAbnormal ?? derivedAbnormal ?? false,
         testDate: safeDate(l.testDate) ?? fallbackDate,
       };
     })
@@ -383,11 +392,22 @@ function buildEntityRows(
   return { medicationRows, diagnosisRows, labResultRows, allergyRows };
 }
 
-async function insertExtractedEntities(
+/**
+ * Clearing derived rows and writing the new ones is a single transaction. These were
+ * separate statement batches, so a failure between them — an embedding timeout was
+ * the likely one — left the document stripped of its medications, labs and chunks
+ * with nothing to rebuild them from. Reprocessing a working document could destroy it.
+ */
+async function rebuildDerivedData(
   documentId: string,
   userId: string,
   data: ValidatedExtraction,
-  fallbackDate: Date
+  fallbackDate: Date,
+  options: {
+    includeImaging: boolean;
+    insertEntities: boolean;
+    imagingRows: Array<typeof imagingFindings.$inferInsert>;
+  }
 ): Promise<void> {
   const { medicationRows, diagnosisRows, labResultRows, allergyRows } = buildEntityRows(
     documentId,
@@ -396,35 +416,28 @@ async function insertExtractedEntities(
     fallbackDate
   );
 
-  const inserts: Promise<unknown>[] = [];
-  if (medicationRows.length > 0) inserts.push(getDb().insert(medications).values(medicationRows));
-  if (diagnosisRows.length > 0) inserts.push(getDb().insert(diagnoses).values(diagnosisRows));
-  if (labResultRows.length > 0) inserts.push(getDb().insert(labResults).values(labResultRows));
-  if (allergyRows.length > 0) inserts.push(getDb().insert(allergies).values(allergyRows));
+  await getDb().transaction(async (tx) => {
+    await tx.delete(documentChunks).where(eq(documentChunks.documentId, documentId));
+    await tx.delete(medications).where(eq(medications.documentId, documentId));
+    await tx.delete(diagnoses).where(eq(diagnoses.documentId, documentId));
+    await tx.delete(labResults).where(eq(labResults.documentId, documentId));
+    await tx.delete(allergies).where(eq(allergies.documentId, documentId));
 
-  await Promise.all(inserts);
-}
+    if (options.includeImaging) {
+      await tx.delete(imagingFindings).where(eq(imagingFindings.documentId, documentId));
+    }
 
-/** Reprocessing runs the full pipeline again, so prior derived rows must be cleared first. */
-async function clearDerivedData(
-  documentId: string,
-  options: { includeImaging: boolean }
-): Promise<void> {
-  const deletions: Promise<unknown>[] = [
-    getDb().delete(documentChunks).where(eq(documentChunks.documentId, documentId)),
-    getDb().delete(medications).where(eq(medications.documentId, documentId)),
-    getDb().delete(diagnoses).where(eq(diagnoses.documentId, documentId)),
-    getDb().delete(labResults).where(eq(labResults.documentId, documentId)),
-    getDb().delete(allergies).where(eq(allergies.documentId, documentId)),
-  ];
+    if (options.imagingRows.length > 0) {
+      await tx.insert(imagingFindings).values(options.imagingRows);
+    }
 
-  if (options.includeImaging) {
-    deletions.push(
-      getDb().delete(imagingFindings).where(eq(imagingFindings.documentId, documentId))
-    );
-  }
+    if (!options.insertEntities) return;
 
-  await Promise.all(deletions);
+    if (medicationRows.length > 0) await tx.insert(medications).values(medicationRows);
+    if (diagnosisRows.length > 0) await tx.insert(diagnoses).values(diagnosisRows);
+    if (labResultRows.length > 0) await tx.insert(labResults).values(labResultRows);
+    if (allergyRows.length > 0) await tx.insert(allergies).values(allergyRows);
+  });
 }
 
 // ── Generate embeddings and store chunks ─────────────────────────────────────
@@ -454,26 +467,51 @@ async function embedAndStoreChunks(
 
 // ── Main orchestrator ───────────────────────────────────────────────────────
 
-export async function processDocument(documentId: string, userId: string): Promise<void> {
+/**
+ * Loads the document, asserting ownership. Both entry points used to select by id
+ * alone and then write every derived row with whatever `userId` they were handed —
+ * safe only because all three callers happened to check first.
+ */
+/** The patient's interface language, which the summary is written in. */
+async function getPreferredLanguage(userId: string): Promise<'en' | 'ur' | 'mixed' | null> {
+  const [row] = await getDb()
+    .select({ preferredLanguage: users.preferredLanguage })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.preferredLanguage ?? null;
+}
+
+async function loadOwnedDocument(documentId: string, userId: string) {
   const [doc] = await getDb()
     .select()
     .from(documents)
-    .where(eq(documents.id, documentId))
+    .where(and(eq(documents.id, documentId), eq(documents.userId, userId)))
     .limit(1);
 
   if (!doc) {
     throw new Error(`Document not found: ${documentId}`);
   }
+  return doc;
+}
+
+export async function processDocument(documentId: string, userId: string): Promise<void> {
+  const doc = await loadOwnedDocument(documentId, userId);
 
   try {
     await getDb()
       .update(documents)
-      .set({ extractionStatus: 'processing', updatedAt: new Date() })
+      .set({
+        extractionStatus: 'processing',
+        processingStartedAt: new Date(),
+        updatedAt: new Date(),
+      })
       .where(eq(documents.id, documentId));
 
-    await clearDerivedData(documentId, { includeImaging: true });
-
-    const buffer = await localStorage.read(doc.storagePath);
+    // Derived rows are deliberately NOT cleared here. They are replaced in one
+    // transaction once the new set is ready, so a failure part-way leaves the
+    // previous good extraction in place rather than an empty record.
+    const buffer = await getStorage().read(doc.storagePath);
     const extraction = await extractText(buffer, doc.mimeType, doc.documentType);
     const text = extraction.text.trim();
     const confidence = extraction.confidence ?? null;
@@ -529,28 +567,37 @@ export async function processDocument(documentId: string, userId: string): Promi
       notes.push(
         `OCR confidence was low (${confidence}%). Medications and lab values were not added to your health record yet — review the extracted text and confirm to save them.`
       );
-    } else {
-      await insertExtractedEntities(documentId, userId, structured, documentDate ?? new Date());
     }
 
-    if (extraction.radiologyFindings && extraction.radiologyFindings.length > 0) {
-      const validated = validateFindings(extraction.radiologyFindings);
-      const findingRows = validated.map((f) => ({
-        documentId,
-        userId,
-        bodyPart: clamp(f.bodyPart, 200) ?? 'unknown',
-        modality: doc.documentType === 'imaging_report' ? 'x-ray' : null,
-        finding: f.finding,
-        location: clamp(f.location, 300),
-        severity: clamp(f.severity, 100),
-        description: f.description ?? null,
-        aiConfidence: Math.round(f.confidence),
-        urgencyLevel: f.urgencyLevel,
-        validationNotes: f.validationNotes,
-        validated: f.validated,
-      }));
-      await getDb().insert(imagingFindings).values(findingRows);
+    // Findings come from the chest X-ray classifier, already validated and worded by
+    // services/radiology/validator — the vision LLM no longer produces any of them.
+    const imagingRows = (extraction.radiologyFindings ?? []).map((f) => ({
+      documentId,
+      userId,
+      bodyPart: clamp(f.bodyPart, 200) ?? 'chest',
+      modality: doc.documentType === 'imaging_report' ? 'x-ray' : null,
+      finding: f.finding,
+      location: clamp(f.location ?? undefined, 300),
+      severity: clamp(f.severity, 100),
+      description: f.description,
+      aiConfidence: Math.round(f.confidence),
+      urgencyLevel: f.urgencyLevel,
+      validationNotes: f.validationNotes,
+      validated: f.validated,
+    }));
+
+    // What the model did and did not check is stated on the document either way —
+    // silence must never read to a patient as "your X-ray is clear".
+    if (extraction.classification) {
+      notes.push(buildImagingNote(extraction.classification));
     }
+
+    // One transaction swaps the old derived rows for the new ones.
+    await rebuildDerivedData(documentId, userId, structured, documentDate ?? new Date(), {
+      includeImaging: true,
+      insertEntities: !lowConfidence,
+      imagingRows,
+    });
 
     const chunks = chunkDocument(text, {
       documentType: doc.documentType,
@@ -574,6 +621,7 @@ export async function processDocument(documentId: string, userId: string): Promi
       extraction: structured,
       documentType: doc.documentType,
       language: structured.language ?? doc.language ?? 'mixed',
+      preferredLanguage: await getPreferredLanguage(userId),
       isHandwritten: extraction.isHandwritten ?? doc.isHandwritten ?? false,
       confidence,
     });
@@ -584,76 +632,77 @@ export async function processDocument(documentId: string, userId: string): Promi
         summary,
         extractionStatus: needsReview ? 'needs_review' : 'confirmed',
         extractionNotes: notes.length > 0 ? notes.join(' ') : null,
+        processingStartedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const failure = classifyModelFailure(error);
+
+    // A document that could not be processed because the AI service was rate limited
+    // is not a bad document. Telling the patient to "re-upload a clearer scan" for a
+    // quota error sends them off to re-photograph something that was fine, so the
+    // status and the message now reflect which of the two actually happened.
     await getDb()
       .update(documents)
       .set({
-        extractionStatus: 'failed',
-        extractionNotes: `Processing failed: ${message}`,
+        extractionStatus: failure.kind === 'permanent' ? 'failed' : 'pending',
+        extractionNotes: failure.userMessage,
+        processingStartedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
+
+    console.error(`[DocumentProcessor] ${documentId} (${failure.kind}): ${failure.detail}`);
     throw error;
   }
 }
 
 /**
- * Applies text/entity corrections the user confirmed in the review UI: entities held back
- * during low-confidence extraction are written now, and chunks are re-embedded so the
- * corrected text is what RAG actually searches.
+ * Applies text/entity corrections the user confirmed in the review UI: entities held
+ * back during low-confidence extraction are written now, and chunks are re-embedded
+ * so the corrected text is what RAG actually searches.
  */
 export async function applyConfirmedExtraction(
   documentId: string,
   userId: string
 ): Promise<void> {
-  const [doc] = await getDb()
-    .select()
-    .from(documents)
-    .where(eq(documents.id, documentId))
-    .limit(1);
-
-  if (!doc) {
-    throw new Error(`Document not found: ${documentId}`);
-  }
+  const doc = await loadOwnedDocument(documentId, userId);
 
   const structured = parseStructuredExtraction(doc.structuredData);
   const text = (doc.rawExtractedText ?? '').trim();
 
-  await clearDerivedData(documentId, { includeImaging: false });
+  await rebuildDerivedData(documentId, userId, structured, doc.documentDate ?? new Date(), {
+    // Imaging findings come from the vision pass, not from the confirmed text, so
+    // they are left alone here.
+    includeImaging: false,
+    insertEntities: true,
+    imagingRows: [],
+  });
 
-  await insertExtractedEntities(
-    documentId,
-    userId,
-    structured,
-    doc.documentDate ?? new Date()
-  );
+  if (!text) return;
 
-  if (text) {
-    const chunks = chunkDocument(text, {
-      documentType: doc.documentType,
-      hospital: doc.hospital ?? undefined,
-      date: doc.documentDate?.toISOString().slice(0, 10),
-    });
-    await embedAndStoreChunks(documentId, userId, chunks);
+  const chunks = chunkDocument(text, {
+    documentType: doc.documentType,
+    hospital: doc.hospital ?? undefined,
+    date: doc.documentDate?.toISOString().slice(0, 10),
+  });
+  await embedAndStoreChunks(documentId, userId, chunks);
 
-    const summary = await generateDocumentSummary({
-      text,
-      extraction: structured,
-      documentType: doc.documentType,
-      language: structured.language ?? doc.language ?? 'mixed',
-      isHandwritten: doc.isHandwritten ?? false,
-      confidence: doc.extractionConfidence,
-    });
+  const summary = await generateDocumentSummary({
+    text,
+    extraction: structured,
+    documentType: doc.documentType,
+    language: structured.language ?? doc.language ?? 'mixed',
+    preferredLanguage: await getPreferredLanguage(userId),
+    isHandwritten: doc.isHandwritten ?? false,
+    confidence: doc.extractionConfidence,
+  });
 
-    if (summary) {
-      await getDb()
-        .update(documents)
-        .set({ summary, updatedAt: new Date() })
-        .where(eq(documents.id, documentId));
-    }
+  if (summary) {
+    await getDb()
+      .update(documents)
+      .set({ summary, updatedAt: new Date() })
+      .where(eq(documents.id, documentId));
   }
 }

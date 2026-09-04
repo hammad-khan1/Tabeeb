@@ -14,7 +14,8 @@ export interface ReconciliationResult {
   extraction: ValidatedExtraction;
   /** Human-readable notes for the review UI. */
   notes: string[];
-  correctedDrugCount: number;
+  /** How many names matched an RxNorm concept under a different spelling. */
+  identifiedDrugCount: number;
   missedEntities: MedicalEntity[];
 }
 
@@ -36,29 +37,34 @@ function mentionedIn(candidate: string, haystack: string[]): boolean {
 
 async function applyDrugNormalization(
   extraction: ValidatedExtraction
-): Promise<{ medications: ValidatedExtraction['medications']; corrections: string[] }> {
+): Promise<{ medications: ValidatedExtraction['medications']; identifications: string[] }> {
   const names = extraction.medications.map((medication) => medication.name ?? '');
   const normalized = await normalizeDrugNames(names);
-  const corrections: string[] = [];
+  const identifications: string[] = [];
 
   const medications = extraction.medications.map((medication, index) => {
     const match = normalized[index];
     if (!match?.rxcui) return medication;
 
     if (match.corrected) {
-      corrections.push(`"${match.original}" → "${match.name}"`);
+      identifications.push(`"${match.original}" → ${match.name}`);
     }
 
     return {
       ...medication,
-      // RxNorm is authoritative on ingredient spelling; the raw reading stays in genericName's
-      // place only when the model did not supply one.
+      // `name` deliberately keeps the verbatim reading: it is what is printed on the
+      // patient's paper and on the box, so it is what they can check against. The
+      // RxNorm spelling only fills genericName when the document did not give one,
+      // and the concept id records the link either way.
+      //
+      // The note this produces used to claim names had been "corrected" while nothing
+      // ever wrote back to `name` — so the wording, not the behaviour, was the bug.
       genericName: medication.genericName ?? match.name,
       rxnormId: match.rxcui,
     };
   });
 
-  return { medications, corrections };
+  return { medications, identifications };
 }
 
 function findMissedEntities(
@@ -126,9 +132,9 @@ export async function reconcileExtraction(
   const missedEntities = findMissedEntities(entities, reconciled);
 
   const notes: string[] = [];
-  if (drugs.corrections.length > 0) {
+  if (drugs.identifications.length > 0) {
     notes.push(
-      `Medicine names were matched against the RxNorm drug dictionary and corrected: ${drugs.corrections.join(', ')}. Please confirm these against the original document.`
+      `These medicine names were read differently from how the RxNorm drug dictionary spells them: ${drugs.identifications.join(', ')}. We kept what the document says and recorded the dictionary name alongside it — please check them against the original.`
     );
   }
 
@@ -138,7 +144,7 @@ export async function reconcileExtraction(
   return {
     extraction: reconciled,
     notes,
-    correctedDrugCount: drugs.corrections.length,
+    identifiedDrugCount: drugs.identifications.length,
     missedEntities,
   };
 }

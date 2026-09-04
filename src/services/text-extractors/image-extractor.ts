@@ -1,24 +1,26 @@
-import { groq, MODELS } from '@/lib/groq';
+import { getGroq, MODELS } from '@/lib/groq';
+import { withModelRetry } from '@/lib/model-errors';
 import {
   normalizeForVision,
   enhanceForHandwriting,
   type NormalizedImage,
 } from './image-normalizer';
+import { getRadiologyClassifier, type ClassificationResult } from '@/services/radiology/classifier';
+import { buildFindings, type ValidatedFinding } from '@/services/radiology/validator';
 
-export interface RadiologyFinding {
-  finding: string;
-  location: string;
-  severity: string;
-  description: string;
-  bodyPart: string;
-  confidence: number;
-}
+/**
+ * Findings now come from `services/radiology/classifier`, a purpose-trained chest
+ * X-ray model — not from the vision LLM. See that file for why.
+ */
+export type { ValidatedFinding as RadiologyFinding } from '@/services/radiology/validator';
 
 export interface ImageExtractionResult {
   text: string;
   confidence: number;
   isHandwritten: boolean;
-  radiologyFindings?: RadiologyFinding[];
+  radiologyFindings?: ValidatedFinding[];
+  /** Raw classifier output, so the caller can report what was and was not checked. */
+  classification?: ClassificationResult;
 }
 
 const VISION_MAX_TOKENS = 8192;
@@ -40,49 +42,6 @@ Respond in this exact JSON format:
   "extractedText": "all extracted text here",
   "confidence": <number 0-100 estimating OCR accuracy>,
   "isHandwritten": <boolean - true if the majority of content is handwritten>
-}`;
-
-const RADIOLOGY_SYSTEM_PROMPT = `You are a board-certified radiologist AI assistant performing clinical-grade analysis of medical imaging.
-
-Analyze the provided image systematically:
-
-1. **Identify**: Determine the imaging modality (X-ray, CT, MRI, ultrasound) and anatomical region
-2. **Survey**: Examine all visible anatomical structures methodically
-3. **Detect**: Identify any abnormalities including:
-   - Fractures (type, displacement, comminution)
-   - Opacities, infiltrates, or consolidations
-   - Masses, nodules, or tumors (size estimate, margins)
-   - Effusions (pleural, pericardial, joint)
-   - Degenerative changes (osteophytes, disc narrowing, sclerosis)
-   - Foreign bodies or implants
-   - Pneumothorax, pneumomediastinum
-   - Cardiomegaly, vascular abnormalities
-   - Soft tissue swelling or calcifications
-4. **Assess severity**: Rate each finding as mild, moderate, severe, or critical
-5. **Impression**: Provide an overall clinical impression
-
-CRITICAL SAFETY RULES:
-- Flag any life-threatening findings (tension pneumothorax, massive hemorrhage, acute fracture with displacement) as "critical"
-- Be conservative — if uncertain, note the uncertainty rather than missing a finding
-- Always recommend clinical correlation and professional radiological review
-- Do NOT provide treatment recommendations
-
-Respond in this exact JSON format:
-{
-  "modality": "x-ray|ct|mri|ultrasound|unknown",
-  "bodyPart": "chest|abdomen|spine|extremity|skull|pelvis|other",
-  "findings": [
-    {
-      "finding": "short name of finding",
-      "location": "specific anatomical location",
-      "severity": "mild|moderate|severe|critical",
-      "description": "detailed description of the finding",
-      "confidence": <number 0-100>
-    }
-  ],
-  "impression": "overall clinical impression summary",
-  "urgentFindings": <boolean - true if any critical/severe findings detected>,
-  "qualityNotes": "any notes about image quality affecting interpretation"
 }`;
 
 /**
@@ -117,7 +76,10 @@ async function runVision(
 ): Promise<string> {
   const dataUrl = `data:${image.mimeType};base64,${image.buffer.toString('base64')}`;
 
-  const response = await groq.chat.completions.create({
+  // Vision calls are the token-hungry part of the pipeline and so the first thing to
+  // hit a rate limit; a short blip should not fail the whole document.
+  const response = await withModelRetry(
+    () => getGroq().chat.completions.create({
     model: MODELS.vision,
     messages: [
       { role: 'system', content: systemPrompt },
@@ -132,7 +94,9 @@ async function runVision(
     temperature: 0.1,
     max_tokens: VISION_MAX_TOKENS,
     response_format: { type: 'json_object' },
-  });
+    }),
+    { label: 'Vision' }
+  );
 
   return response.choices[0]?.message?.content ?? '';
 }
@@ -248,40 +212,25 @@ export async function ocrImage(buffer: Buffer, mimeType: string): Promise<OcrPas
   return refineHandwriting(buffer, mimeType, first);
 }
 
-async function extractRadiologyFindings(
+/**
+ * Runs the chest X-ray classifier over the image.
+ *
+ * This used to prompt the general-purpose vision LLM as "a board-certified radiologist
+ * AI performing clinical-grade analysis" and take whatever it produced. A general VLM
+ * cannot detect a pneumothorax or a fracture; it produced fluent, unfounded findings
+ * that were stored as clinical data. Detection is now the classifier's job, and when
+ * none is configured no findings are produced at all.
+ */
+async function classifyRadiologyImage(
   buffer: Buffer,
   mimeType: string
-): Promise<RadiologyFinding[]> {
-  const content = await runVision(
-    RADIOLOGY_SYSTEM_PROMPT,
-    'Perform a comprehensive radiological analysis of this medical image. Identify all findings, assess severity, and provide a clinical impression.',
-    await normalizeForVision(buffer, mimeType)
+): Promise<{ findings: ValidatedFinding[]; classification: ClassificationResult }> {
+  const normalized = await normalizeForVision(buffer, mimeType);
+  const classification = await getRadiologyClassifier().classify(
+    normalized.buffer,
+    normalized.mimeType
   );
-
-  const parsed = parseJsonObject<{
-    bodyPart?: string;
-    findings?: Array<{
-      finding?: string;
-      location?: string;
-      severity?: string;
-      description?: string;
-      confidence?: number;
-    }>;
-  }>(content);
-
-  if (!parsed) return [];
-
-  const bodyPart = parsed.bodyPart ?? 'unknown';
-  return (parsed.findings ?? [])
-    .filter((f) => typeof f?.finding === 'string' && f.finding.trim().length > 0)
-    .map((f) => ({
-      finding: f.finding!.trim(),
-      location: f.location?.trim() || bodyPart,
-      severity: f.severity?.trim() || 'moderate',
-      description: f.description?.trim() || f.finding!.trim(),
-      bodyPart,
-      confidence: clampConfidence(f.confidence, 60),
-    }));
+  return { findings: buildFindings(classification), classification };
 }
 
 export async function extractFromImage(
@@ -298,7 +247,9 @@ export async function extractFromImage(
   };
 
   if (documentType === 'imaging_report') {
-    result.radiologyFindings = await extractRadiologyFindings(buffer, mimeType);
+    const { findings, classification } = await classifyRadiologyImage(buffer, mimeType);
+    result.radiologyFindings = findings;
+    result.classification = classification;
   }
 
   return result;

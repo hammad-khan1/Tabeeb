@@ -1,3 +1,5 @@
+import { limitConcurrency } from '@/lib/concurrency';
+
 const RXNAV_BASE = 'https://rxnav.nlm.nih.gov/REST';
 
 /**
@@ -31,7 +33,24 @@ const MIN_SCORE = 8;
 /** A match may fix OCR noise, not substitute a different drug, so the edit must stay small. */
 const MAX_EDIT_RATIO = 0.34;
 
+/**
+ * Bounded so a long-running process cannot grow this without limit. Insertion-ordered
+ * eviction is enough here: the working set is one patient's medicines, and a miss
+ * costs one RxNav call.
+ */
+const CACHE_MAX_ENTRIES = 2_000;
 const cache = new Map<string, NormalizedDrug>();
+
+function cacheSet(key: string, value: NormalizedDrug): void {
+  if (cache.size >= CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, value);
+}
+
+/** NLM asks clients to stay under 20 requests a second. */
+const RXNAV_CONCURRENCY = 4;
 
 function editDistance(a: string, b: string): number {
   let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -137,7 +156,7 @@ export async function normalizeDrugName(rawName: string): Promise<NormalizedDrug
     : undefined;
 
   if (!best?.name || !best.rxcui) {
-    cache.set(cacheKey, unresolved);
+    cacheSet(cacheKey, unresolved);
     return unresolved;
   }
 
@@ -148,10 +167,14 @@ export async function normalizeDrugName(rawName: string): Promise<NormalizedDrug
     original,
   };
 
-  cache.set(cacheKey, resolved);
+  cacheSet(cacheKey, resolved);
   return resolved;
 }
 
+/**
+ * Throttled rather than `Promise.all`: a patient on a dozen medicines would otherwise
+ * open a dozen simultaneous connections to NLM from a single upload.
+ */
 export async function normalizeDrugNames(names: string[]): Promise<NormalizedDrug[]> {
-  return Promise.all(names.map((name) => normalizeDrugName(name)));
+  return limitConcurrency(names, RXNAV_CONCURRENCY, (name) => normalizeDrugName(name));
 }

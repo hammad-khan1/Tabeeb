@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
-import { errorResponse } from '@/lib/api-error';
+import { errorResponse, notFound } from '@/lib/api-error';
+import {
+  confirmExtractionSchema,
+  parseJsonBody,
+  parseOrThrow,
+  uuidParamSchema,
+} from '@/lib/validation';
 import { documents } from '../../../../../../drizzle/schema';
 import { applyConfirmedExtraction } from '@/services/document-processor';
+
+export const maxDuration = 300;
 
 export async function POST(
   request: NextRequest,
@@ -12,50 +20,37 @@ export async function POST(
 ) {
   try {
     const userId = await getCurrentUserId();
-    const { id } = await params;
-    const body = await request.json();
-
-    const { correctedText, structuredData } = body as {
-      correctedText?: string;
-      structuredData?: Record<string, unknown>;
-    };
-
-    const [doc] = await getDb()      .select()
-      .from(documents)
-      .where(and(eq(documents.id, id), eq(documents.userId, userId)))
-      .limit(1);
-
-    if (!doc) {
-      return NextResponse.json(
-        { error: 'Document not found' },
-        { status: 404 }
-      );
-    }
-
-    const updates: Record<string, unknown> = {
-      extractionStatus: 'confirmed',
-      extractionNotes: null,
-      updatedAt: new Date(),
-    };
-
-    if (correctedText !== undefined) {
-      updates.rawExtractedText = correctedText;
-    }
-
-    if (structuredData !== undefined) {
-      updates.structuredData = structuredData;
-    }
+    const id = parseOrThrow(uuidParamSchema, (await params).id);
+    const { correctedText, structuredData } = await parseJsonBody(
+      confirmExtractionSchema,
+      request
+    );
 
     const [updated] = await getDb()
       .update(documents)
-      .set(updates)
+      .set({
+        extractionStatus: 'confirmed',
+        extractionNotes: null,
+        ...(correctedText !== undefined && { rawExtractedText: correctedText }),
+        ...(structuredData !== undefined && { structuredData }),
+        updatedAt: new Date(),
+      })
       .where(and(eq(documents.id, id), eq(documents.userId, userId)))
       .returning();
 
+    if (!updated) throw notFound('Document not found');
+
+    // Rebuilds entities and re-embeds chunks from the corrected text, so what RAG
+    // searches is what the patient actually confirmed.
     await applyConfirmedExtraction(id, userId);
 
-    return NextResponse.json(updated);
+    const { storagePath: _storagePath, ...safe } = updated;
+    return NextResponse.json(safe);
   } catch (error) {
-    return errorResponse('POST /api/documents/[id]/confirm-extraction', error, 'Failed to confirm extraction');
+    return errorResponse(
+      'POST /api/documents/[id]/confirm-extraction',
+      error,
+      'Failed to confirm extraction'
+    );
   }
 }

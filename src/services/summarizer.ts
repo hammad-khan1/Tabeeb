@@ -1,4 +1,4 @@
-import { groq, MODELS } from '@/lib/groq';
+import { getGroq, MODELS } from '@/lib/groq';
 import type { ValidatedExtraction } from '@/services/extraction-schema';
 
 /**
@@ -10,8 +10,14 @@ export interface SummaryInput {
   text: string;
   extraction: ValidatedExtraction;
   documentType: string;
-  /** Language of the document itself; the patient's setting overrides it when present. */
+  /** Language detected in the document itself. */
   language: 'en' | 'ur' | 'mixed';
+  /**
+   * The patient's own interface language, which wins when set. The type here used to
+   * claim the setting "overrides it when present" while the caller never passed it —
+   * an Urdu-preferring patient got an English summary of an English document.
+   */
+  preferredLanguage?: 'en' | 'ur' | 'mixed' | null;
   isHandwritten: boolean;
   confidence: number | null;
 }
@@ -111,11 +117,18 @@ export async function generateDocumentSummary(input: SummaryInput): Promise<stri
   const text = input.text.trim();
   if (!text) return null;
 
+  // A patient who chose Urdu wants the explanation in Urdu even when the document is
+  // in English — that is the whole point of the setting.
+  const summaryLanguage =
+    input.preferredLanguage === 'en' || input.preferredLanguage === 'ur'
+      ? input.preferredLanguage
+      : input.language;
+
   const digest = buildEntityDigest(input.extraction);
 
   const userContent = [
     `Document type: ${input.documentType}`,
-    LANGUAGE_INSTRUCTION[input.language],
+    LANGUAGE_INSTRUCTION[summaryLanguage],
     digest ? `\nEntities already extracted from this document:\n${digest}` : '',
     buildReliabilityNote(input),
     `\nFull text of the document:\n"""\n${text.slice(0, MAX_TEXT_CHARS)}\n"""`,
@@ -124,7 +137,7 @@ export async function generateDocumentSummary(input: SummaryInput): Promise<stri
     .join('\n');
 
   try {
-    const response = await groq.chat.completions.create({
+    const response = await getGroq().chat.completions.create({
       model: MODELS.primary,
       messages: [
         { role: 'system', content: SUMMARY_SYSTEM_PROMPT },

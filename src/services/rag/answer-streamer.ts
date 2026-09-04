@@ -1,4 +1,4 @@
-import { groq, MODELS } from '@/lib/groq';
+import { getGroq, MODELS } from '@/lib/groq';
 
 interface StreamMessage {
   role: 'system' | 'user' | 'assistant';
@@ -6,7 +6,7 @@ interface StreamMessage {
 }
 
 export async function streamAnswer(messages: StreamMessage[]) {
-  const stream = await groq.chat.completions.create({
+  const stream = await getGroq().chat.completions.create({
     model: MODELS.primary,
     messages,
     temperature: 0,

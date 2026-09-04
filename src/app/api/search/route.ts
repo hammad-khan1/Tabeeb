@@ -1,30 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
 import { errorResponse } from '@/lib/api-error';
+import { consume } from '@/lib/rate-limit';
+import { parseSearchParams, searchSchema } from '@/lib/validation';
 import { retrieveRelevantChunks } from '@/services/rag/retriever';
 
 export async function GET(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
-    const query = request.nextUrl.searchParams.get('q');
+    consume('search', userId);
 
-    if (!query) {
-      return NextResponse.json(
-        { error: 'Query parameter q is required' },
-        { status: 400 }
-      );
-    }
+    // `limit` is validated rather than passed through parseInt: `?limit=abc` produced
+    // NaN and `slice(0, NaN)`, so search silently returned nothing.
+    const { q, section, limit } = parseSearchParams(searchSchema, request.nextUrl.searchParams);
 
-    const limitParam = request.nextUrl.searchParams.get('limit');
-    const sectionFilter = request.nextUrl.searchParams.get('section') ?? undefined;
-    const limit = limitParam ? parseInt(limitParam, 10) : undefined;
-
-    const results = await retrieveRelevantChunks(userId, query, {
+    const results = await retrieveRelevantChunks(userId, q, {
       limit,
-      sectionFilter,
+      sectionFilter: section,
     });
 
-    return NextResponse.json(results);
+    return NextResponse.json({ query: q, results, count: results.length });
   } catch (error) {
     return errorResponse('GET /api/search', error, 'Search failed');
   }

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
-import { errorResponse } from '@/lib/api-error';
-import { localStorage } from '@/lib/storage';
+import { errorResponse, notFound } from '@/lib/api-error';
+import { getStorage } from '@/lib/storage';
+import { parseJsonBody, parseOrThrow, updateDocumentSchema, uuidParamSchema } from '@/lib/validation';
 import { documents, imagingFindings } from '../../../../../drizzle/schema';
 
 export async function GET(
@@ -12,30 +13,34 @@ export async function GET(
 ) {
   try {
     const userId = await getCurrentUserId();
-    const { id } = await params;
+    const id = parseOrThrow(uuidParamSchema, (await params).id);
 
-    const [doc] = await getDb()      .select()
+    const [doc] = await getDb()
+      .select()
       .from(documents)
       .where(and(eq(documents.id, id), eq(documents.userId, userId)))
       .limit(1);
 
-    if (!doc) {
-      return NextResponse.json(
-        { error: 'Document not found' },
-        { status: 404 }
-      );
-    }
+    if (!doc) throw notFound('Document not found');
 
-    let findings: typeof imagingFindings.$inferSelect[] = [];
-    if (doc.documentType === 'imaging_report') {
-      findings = await getDb()
-        .select()
-        .from(imagingFindings)
-        .where(eq(imagingFindings.documentId, id))
-        .orderBy(imagingFindings.createdAt);
-    }
+    const findings =
+      doc.documentType === 'imaging_report'
+        ? await getDb()
+            .select()
+            .from(imagingFindings)
+            .where(eq(imagingFindings.documentId, id))
+            .orderBy(imagingFindings.createdAt)
+        : [];
 
-    return NextResponse.json({ ...doc, imagingFindings: findings });
+    // storagePath is an internal filesystem path; the file is fetched from
+    // /api/documents/[id]/file, which re-checks ownership.
+    const { storagePath: _storagePath, ...safe } = doc;
+
+    return NextResponse.json({
+      ...safe,
+      fileUrl: `/api/documents/${id}/file`,
+      imagingFindings: findings,
+    });
   } catch (error) {
     return errorResponse('GET /api/documents/[id]', error, 'Failed to fetch document');
   }
@@ -47,44 +52,19 @@ export async function PATCH(
 ) {
   try {
     const userId = await getCurrentUserId();
-    const { id } = await params;
-    const body = await request.json();
+    const id = parseOrThrow(uuidParamSchema, (await params).id);
+    const updates = await parseJsonBody(updateDocumentSchema, request);
 
-    const allowedFields = ['title', 'documentType', 'documentDate', 'hospital', 'doctorName'] as const;
-    const updates: Record<string, unknown> = {};
-
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        if (field === 'documentDate' && body[field]) {
-          updates[field] = new Date(body[field]);
-        } else {
-          updates[field] = body[field];
-        }
-      }
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json(
-        { error: 'No valid fields to update' },
-        { status: 400 }
-      );
-    }
-
-    updates.updatedAt = new Date();
-
-    const [updated] = await getDb()      .update(documents)
-      .set(updates)
+    const [updated] = await getDb()
+      .update(documents)
+      .set({ ...updates, updatedAt: new Date() })
       .where(and(eq(documents.id, id), eq(documents.userId, userId)))
       .returning();
 
-    if (!updated) {
-      return NextResponse.json(
-        { error: 'Document not found' },
-        { status: 404 }
-      );
-    }
+    if (!updated) throw notFound('Document not found');
 
-    return NextResponse.json(updated);
+    const { storagePath: _storagePath, ...safe } = updated;
+    return NextResponse.json(safe);
   } catch (error) {
     return errorResponse('PATCH /api/documents/[id]', error, 'Failed to update document');
   }
@@ -96,26 +76,18 @@ export async function DELETE(
 ) {
   try {
     const userId = await getCurrentUserId();
-    const { id } = await params;
+    const id = parseOrThrow(uuidParamSchema, (await params).id);
 
-    const [doc] = await getDb()      .select()
-      .from(documents)
+    // Delete the row first: a leftover file is recoverable, a record pointing at a
+    // file that is already gone is not.
+    const [deleted] = await getDb()
+      .delete(documents)
       .where(and(eq(documents.id, id), eq(documents.userId, userId)))
-      .limit(1);
+      .returning({ storagePath: documents.storagePath });
 
-    if (!doc) {
-      return NextResponse.json(
-        { error: 'Document not found' },
-        { status: 404 }
-      );
-    }
+    if (!deleted) throw notFound('Document not found');
 
-    // Delete file from storage
-    await localStorage.delete(doc.storagePath);
-
-    // Delete document record (cascades to chunks, medications, diagnoses, lab_results via FK)
-    await getDb()      .delete(documents)
-      .where(eq(documents.id, id));
+    await getStorage().delete(deleted.storagePath);
 
     return NextResponse.json({ success: true, id });
   } catch (error) {

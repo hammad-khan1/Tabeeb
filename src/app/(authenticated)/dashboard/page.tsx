@@ -40,15 +40,18 @@ function formatRelative(dateStr: string) {
 
 export default function DashboardPage() {
   const { user } = useUser();
-  const { data: documents, isLoading: docsLoading } = useSWR<
-    Record<string, unknown>[]
-  >("/api/documents", fetcher);
+  // The list endpoint is paginated and returns { documents, total, ... }; the
+  // dashboard only needs the most recent few for its cards and counts.
+  const { data: documentList, isLoading: docsLoading } = useSWR<{
+    documents: Record<string, unknown>[];
+    total: number;
+  }>("/api/documents?limit=50", fetcher);
   const { data: history, isLoading: historyLoading } = useSWR<Record<string, unknown>>(
     "/api/history",
     fetcher
   );
 
-  const docs = (Array.isArray(documents) ? documents : []) as Array<{
+  const docs = (documentList?.documents ?? []) as Array<{
     id: string;
     title: string;
     documentType: string;
@@ -56,7 +59,6 @@ export default function DashboardPage() {
     createdAt: string;
     documentDate: string | null;
     hospital: string | null;
-    structuredData: Record<string, unknown> | null;
   }>;
 
   const historyData = history as {
@@ -70,7 +72,8 @@ export default function DashboardPage() {
   } | undefined;
 
   // Stats
-  const totalDocs = docs.length;
+  // The server's count, not the page length — the fetch above is capped at 50.
+  const totalDocs = documentList?.total ?? 0;
   // Display-only stat; a cutoff that drifts by milliseconds between renders is harmless.
   // eslint-disable-next-line react-hooks/purity
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -169,19 +172,19 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Button render={<Link href="/documents/upload" />}>
-            <Upload className="mr-2 size-4" />
+            <Upload className="me-2 size-4" />
             Upload Document
           </Button>
           <Button variant="outline" render={<Link href="/chat" />}>
-            <MessageSquare className="mr-2 size-4" />
+            <MessageSquare className="me-2 size-4" />
             Ask Tabeeb
           </Button>
           <Button variant="outline" render={<Link href="/documents/upload" />}>
-            <Mic className="mr-2 size-4" />
+            <Mic className="me-2 size-4" />
             Voice Note
           </Button>
           <Button variant="outline" render={<Link href="/trends" />}>
-            <TrendingUp className="mr-2 size-4" />
+            <TrendingUp className="me-2 size-4" />
             View Trends
           </Button>
         </CardContent>

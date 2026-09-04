@@ -1,6 +1,8 @@
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getDb } from '@/lib/db';
+import { appUrl } from '@/lib/env';
+import { ApiError, notFound } from '@/lib/api-error';
 import { shareLinks, documents } from '../../../drizzle/schema';
 import { getMedicalHistorySummary, type MedicalHistorySummary } from './summarizer';
 
@@ -14,13 +16,23 @@ interface ShareLinkResult {
   token: string;
   url: string;
   expiresAt: Date;
+  documentCount: number;
 }
 
-interface SharedHistoryData {
+export interface SharedHistoryData {
   title: string | null;
   expiresAt: Date;
   viewCount: number;
   history: MedicalHistorySummary;
+}
+
+/**
+ * Recipients open /share/<token>, which is deliberately outside the (authenticated)
+ * route group and off the protected matcher — a share link that demands the
+ * recipient log in as the patient is not a share link.
+ */
+export function shareUrlFor(token: string): string {
+  return `${appUrl().replace(/\/+$/, '')}/share/${token}`;
 }
 
 export async function createShareLink(
@@ -29,6 +41,21 @@ export async function createShareLink(
 ): Promise<ShareLinkResult> {
   const { title, documentIds = [], expiresInHours = 168 } = options;
 
+  // Only the caller's own documents may be scoped in, so a guessed id cannot widen
+  // the share to somebody else's record.
+  let ownedIds: string[] = [];
+  if (documentIds.length > 0) {
+    const rows = await getDb()
+      .select({ id: documents.id })
+      .from(documents)
+      .where(and(eq(documents.userId, userId), inArray(documents.id, documentIds)));
+    ownedIds = rows.map((row) => row.id);
+
+    if (ownedIds.length === 0) {
+      throw new ApiError(400, 'None of the selected documents were found in your record.');
+    }
+  }
+
   const token = nanoid(32);
   const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
 
@@ -36,104 +63,82 @@ export async function createShareLink(
     userId,
     token,
     title: title ?? null,
-    documentIds,
+    documentIds: ownedIds,
     expiresAt,
   });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-  const url = `${baseUrl}/share/${token}`;
-
-  return { token, url, expiresAt };
+  return {
+    token,
+    url: shareUrlFor(token),
+    expiresAt,
+    documentCount: ownedIds.length,
+  };
 }
 
-export async function getSharedHistory(
-  token: string
-): Promise<SharedHistoryData> {
-  const [link] = await getDb()    .select()
-    .from(shareLinks)
-    .where(and(eq(shareLinks.token, token), eq(shareLinks.isActive, true)))
-    .limit(1);
+export async function getSharedHistory(token: string): Promise<SharedHistoryData> {
+  // Expiry is enforced in the WHERE clause so a stale row can never be served, and
+  // the view count is incremented in SQL rather than read-modify-write.
+  const [link] = await getDb()
+    .update(shareLinks)
+    .set({ viewCount: sql`${shareLinks.viewCount} + 1` })
+    .where(
+      and(
+        eq(shareLinks.token, token),
+        eq(shareLinks.isActive, true),
+        sql`${shareLinks.expiresAt} > now()`
+      )
+    )
+    .returning();
 
   if (!link) {
-    throw new Error('Share link not found or inactive');
+    // Deliberately one message for "wrong token", "revoked" and "expired": telling a
+    // guesser which of those they hit turns the token space into an oracle.
+    throw notFound('This link is no longer available. It may have expired or been revoked.');
   }
 
-  if (new Date() > link.expiresAt) {
-    throw new Error('Share link has expired');
-  }
-
-  await getDb()    .update(shareLinks)
-    .set({ viewCount: (link.viewCount ?? 0) + 1 })
-    .where(eq(shareLinks.id, link.id));
-
-  let history: MedicalHistorySummary;
-
-  if (link.documentIds.length > 0) {
-    history = await getFilteredHistory(link.userId, link.documentIds);
-  } else {
-    history = await getMedicalHistorySummary(link.userId);
-  }
+  // An empty documentIds array means the share was never scoped — the whole record.
+  const scope = link.documentIds.length > 0 ? link.documentIds : undefined;
+  const history = await getMedicalHistorySummary(link.userId, scope);
 
   return {
     title: link.title,
     expiresAt: link.expiresAt,
-    viewCount: (link.viewCount ?? 0) + 1,
+    viewCount: link.viewCount ?? 1,
     history,
   };
 }
 
-async function getFilteredHistory(
-  userId: string,
-  documentIds: string[]
-): Promise<MedicalHistorySummary> {
-  const full = await getMedicalHistorySummary(userId);
+export async function listShareLinks(userId: string) {
+  const rows = await getDb()
+    .select({
+      token: shareLinks.token,
+      title: shareLinks.title,
+      documentIds: shareLinks.documentIds,
+      expiresAt: shareLinks.expiresAt,
+      isActive: shareLinks.isActive,
+      viewCount: shareLinks.viewCount,
+      createdAt: shareLinks.createdAt,
+    })
+    .from(shareLinks)
+    .where(eq(shareLinks.userId, userId))
+    .orderBy(desc(shareLinks.createdAt))
+    .limit(100);
 
-  const filteredDocs = await getDb()    .select()
-    .from(documents)
-    .where(
-      and(
-        eq(documents.userId, userId),
-        inArray(documents.id, documentIds)
-      )
-    );
+  return rows.map((row) => ({
+    ...row,
+    url: shareUrlFor(row.token),
+    documentCount: row.documentIds.length,
+    isExpired: row.expiresAt.getTime() <= Date.now(),
+  }));
+}
 
-  const timelineMap = new Map<string, Array<{
-    date: Date;
-    type: string;
-    title: string;
-    hospital?: string | null;
-    doctorName?: string | null;
-  }>>();
+/** Revoking keeps the row so the view count stays auditable. */
+export async function revokeShareLink(userId: string, token: string): Promise<void> {
+  const [revoked] = await getDb()
+    .update(shareLinks)
+    .set({ isActive: false })
+    .where(and(eq(shareLinks.token, token), eq(shareLinks.userId, userId)))
+    .returning({ token: shareLinks.token });
 
-  for (const doc of filteredDocs) {
-    const date = doc.documentDate ?? doc.createdAt;
-    if (!date) continue;
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    if (!timelineMap.has(monthKey)) {
-      timelineMap.set(monthKey, []);
-    }
-    timelineMap.get(monthKey)!.push({
-      date,
-      type: doc.documentType,
-      title: doc.title,
-      hospital: doc.hospital,
-      doctorName: doc.doctorName,
-    });
-  }
-
-  const visitTimeline = Array.from(timelineMap.entries())
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([month, events]) => ({
-      month,
-      events: events.sort((a, b) => b.date.getTime() - a.date.getTime()),
-    }));
-
-  return {
-    conditions: full.conditions,
-    currentMedications: full.currentMedications,
-    allergies: full.allergies,
-    recentLabResults: full.recentLabResults,
-    visitTimeline,
-    documentCount: filteredDocs.length,
-  };
+  if (!revoked) throw notFound('Share link not found.');
 }

@@ -1,83 +1,155 @@
-import type { RadiologyFinding } from '../text-extractors/image-extractor';
+import type { ClassificationResult, Pathology, PathologyScore } from './classifier';
 
-interface ValidatedFinding extends RadiologyFinding {
+/**
+ * Turns classifier output into the findings stored on a document.
+ *
+ * Every field here is derived from the model's probabilities and a fixed clinical
+ * table. Nothing is generated. The previous version accepted findings invented by a
+ * general-purpose vision LLM and stamped `validated: true` on them, which asserted a
+ * verification that had never happened.
+ */
+
+export interface ValidatedFinding {
+  finding: string;
+  bodyPart: string;
+  location: string | null;
+  severity: string;
+  description: string;
+  /** The model's probability as a percentage. */
+  confidence: number;
   urgencyLevel: 'routine' | 'follow-up' | 'urgent' | 'critical';
   validationNotes: string;
+  /** Always false: no clinician has reviewed this. */
   validated: boolean;
 }
 
-const URGENT_FINDINGS = new Set([
-  'pneumothorax', 'tension pneumothorax', 'hemorrhage', 'massive effusion',
-  'acute fracture with displacement', 'free air', 'bowel perforation',
-  'aortic dissection', 'pulmonary embolism', 'cardiac tamponade',
-  'intracranial hemorrhage', 'midline shift', 'herniation',
-]);
-
-const FOLLOW_UP_FINDINGS = new Set([
-  'nodule', 'mass', 'opacity', 'infiltrate', 'consolidation',
-  'effusion', 'lymphadenopathy', 'bone lesion', 'suspicious calcification',
-]);
-
-const BODY_PART_VALIDITY: Record<string, string[]> = {
-  chest: ['rib', 'clavicle', 'scapula', 'sternum', 'vertebra', 'lung', 'heart', 'mediastinum', 'pleura', 'diaphragm', 'hila'],
-  abdomen: ['liver', 'spleen', 'kidney', 'bowel', 'stomach', 'pancreas', 'gallbladder', 'spine', 'pelvis'],
-  spine: ['vertebra', 'disc', 'spinal canal', 'foramen', 'facet joint', 'pedicle', 'lamina'],
-  extremity: ['femur', 'tibia', 'fibula', 'humerus', 'radius', 'ulna', 'joint', 'metacarpal', 'metatarsal', 'phalanx'],
-  skull: ['calvarium', 'sinus', 'orbit', 'mandible', 'mastoid', 'temporal bone'],
-  pelvis: ['hip', 'acetabulum', 'sacrum', 'coccyx', 'pubic bone', 'ischium', 'ilium'],
+/**
+ * How each pathology should be escalated, and how to describe it to a patient who is
+ * not a clinician. Urgency reflects what the finding would mean if confirmed — it is
+ * not a claim that this patient has it.
+ */
+const PATHOLOGY_INFO: Record<
+  Pathology,
+  { urgency: ValidatedFinding['urgencyLevel']; plain: string }
+> = {
+  Pneumothorax: {
+    urgency: 'critical',
+    plain: 'a possible collapsed lung, where air has leaked into the space around the lung',
+  },
+  Mass: {
+    urgency: 'urgent',
+    plain: 'a possible mass — an area of tissue that should be looked at properly',
+  },
+  Nodule: {
+    urgency: 'follow-up',
+    plain: 'a possible small round spot in the lung, which usually needs a repeat scan to watch',
+  },
+  Fracture: { urgency: 'urgent', plain: 'a possible broken bone' },
+  Edema: { urgency: 'urgent', plain: 'possible fluid building up in the lungs' },
+  Effusion: { urgency: 'follow-up', plain: 'possible fluid collecting around the lung' },
+  Consolidation: {
+    urgency: 'follow-up',
+    plain: 'an area of lung that looks solid rather than air-filled, often seen with infection',
+  },
+  Pneumonia: { urgency: 'urgent', plain: 'possible signs of a chest infection' },
+  Infiltration: {
+    urgency: 'follow-up',
+    plain: 'hazy areas in the lung that can be seen with infection or inflammation',
+  },
+  'Lung Opacity': { urgency: 'follow-up', plain: 'an area of the lung that looks denser than usual' },
+  'Lung Lesion': { urgency: 'follow-up', plain: 'an area of abnormal-looking lung tissue' },
+  Atelectasis: { urgency: 'follow-up', plain: 'a part of the lung that may not be fully inflated' },
+  Cardiomegaly: { urgency: 'follow-up', plain: 'the heart may look larger than usual on this film' },
+  'Enlarged Cardiomediastinum': {
+    urgency: 'follow-up',
+    plain: 'the area around the heart may look wider than usual',
+  },
+  Emphysema: { urgency: 'routine', plain: 'possible signs of long-term lung damage' },
+  Fibrosis: { urgency: 'routine', plain: 'possible scarring in the lung tissue' },
+  'Pleural Thickening': {
+    urgency: 'routine',
+    plain: 'the lining around the lung may look thickened',
+  },
+  Hernia: { urgency: 'routine', plain: 'a possible hernia near the diaphragm' },
 };
 
-function determineUrgency(finding: RadiologyFinding): ValidatedFinding['urgencyLevel'] {
-  const findingLower = (finding.finding ?? '').toLowerCase();
-  const severityLower = (finding.severity ?? '').toLowerCase();
-
-  for (const urgent of URGENT_FINDINGS) {
-    if (findingLower.includes(urgent)) return 'critical';
-  }
-
-  if (severityLower === 'critical') return 'critical';
-  if (severityLower === 'severe') return 'urgent';
-
-  for (const followUp of FOLLOW_UP_FINDINGS) {
-    if (findingLower.includes(followUp)) return 'follow-up';
-  }
-
-  return 'routine';
+/** Probability bands, used only to word the finding — not a clinical grade. */
+function describeConfidence(probability: number): string {
+  if (probability >= 0.85) return 'strong';
+  if (probability >= 0.65) return 'moderate';
+  return 'weak';
 }
 
-function validateAnatomicalPlausibility(finding: RadiologyFinding): string {
-  const bodyPart = (finding.bodyPart ?? '').toLowerCase();
-  const location = (finding.location || '').toLowerCase();
-  const validParts = BODY_PART_VALIDITY[bodyPart];
-
-  if (!validParts) return `Body part "${finding.bodyPart}" not in standard classification — review recommended.`;
-
-  const isPlausible = validParts.some((part) => location.includes(part));
-  if (isPlausible) return `Anatomically consistent with ${finding.bodyPart} imaging.`;
-
-  return `Location "${finding.location}" may not be typical for ${finding.bodyPart} — verify anatomical correlation.`;
+function severityFor(urgency: ValidatedFinding['urgencyLevel']): string {
+  switch (urgency) {
+    case 'critical':
+      return 'critical';
+    case 'urgent':
+      return 'severe';
+    case 'follow-up':
+      return 'moderate';
+    default:
+      return 'mild';
+  }
 }
 
-export function validateFindings(findings: RadiologyFinding[]): ValidatedFinding[] {
-  return findings.map((finding) => {
-    const urgencyLevel = determineUrgency(finding);
-    const anatomicalNote = validateAnatomicalPlausibility(finding);
+const DISCLAIMER =
+  'This is an automated screening flag from an AI model, not a diagnosis and not a radiologist’s reading. It must be confirmed by a doctor.';
 
-    const notes: string[] = [anatomicalNote];
+function toFinding(score: PathologyScore, modelId: string): ValidatedFinding {
+  const info = PATHOLOGY_INFO[score.pathology];
+  const percent = Math.round(score.probability * 100);
+  const strength = describeConfidence(score.probability);
 
-    if (urgencyLevel === 'critical') {
-      notes.push('URGENT: This finding requires immediate clinical attention.');
-    } else if (urgencyLevel === 'urgent') {
-      notes.push('This finding warrants prompt clinical follow-up.');
-    }
+  const notes = [
+    `Automated screening by ${modelId} gave a ${strength} signal (${percent}%) for ${score.pathology.toLowerCase()}.`,
+  ];
+  if (info.urgency === 'critical') {
+    notes.push('If confirmed this would need immediate attention — do not wait to have it checked.');
+  } else if (info.urgency === 'urgent') {
+    notes.push('This warrants prompt review by a doctor.');
+  }
+  notes.push(DISCLAIMER);
 
-    notes.push('AI-assisted analysis only. Professional radiological review required.');
+  return {
+    finding: score.pathology,
+    bodyPart: 'chest',
+    location: null,
+    severity: severityFor(info.urgency),
+    description: `The screening model flagged ${info.plain} (${percent}% signal).`,
+    confidence: percent,
+    urgencyLevel: info.urgency,
+    validationNotes: notes.join(' '),
+    // No clinician has reviewed this. The old code set this true unconditionally.
+    validated: false,
+  };
+}
 
-    return {
-      ...finding,
-      urgencyLevel,
-      validationNotes: notes.join(' '),
-      validated: true,
-    };
-  });
+export function buildFindings(result: ClassificationResult): ValidatedFinding[] {
+  return result.flagged.map((score) => toFinding(score, result.modelId));
+}
+
+/**
+ * The note shown on an imaging document, covering both the "nothing flagged" and
+ * "not analysed" cases explicitly — silence must never read as "your X-ray is clear".
+ */
+export function buildImagingNote(result: ClassificationResult): string {
+  if (result.unavailableReason) {
+    return `${result.unavailableReason} This X-ray has not been checked for any abnormality — only a doctor can tell you what it shows.`;
+  }
+
+  if (result.flagged.length === 0) {
+    const top = result.scores[0];
+    return (
+      'The automated screening model did not flag any of the conditions it can detect' +
+      (top ? ` (highest signal: ${top.pathology.toLowerCase()}, ${Math.round(top.probability * 100)}%)` : '') +
+      '. That is not the same as your X-ray being normal — the model only looks for a fixed list of conditions on adult chest films, and it is not a radiologist. ' +
+      DISCLAIMER
+    );
+  }
+
+  const list = result.flagged
+    .map((s) => `${s.pathology.toLowerCase()} (${Math.round(s.probability * 100)}%)`)
+    .join(', ');
+  return `The automated screening model flagged: ${list}. ${DISCLAIMER}`;
 }

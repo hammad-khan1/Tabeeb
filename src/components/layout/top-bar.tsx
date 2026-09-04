@@ -5,35 +5,40 @@ import { usePathname } from "next/navigation"
 import { Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { MobileNav } from "@/components/layout/mobile-nav"
+import { useLocale } from "@/components/providers/locale-provider"
+import type { TranslationKey } from "@/lib/i18n"
 
-const routeTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/documents": "Documents",
-  "/documents/upload": "Upload Document",
-  "/chat": "Ask Tabeeb",
-  "/history": "History",
-  "/interactions": "Interactions",
-  "/trends": "Trends",
-  "/insights": "Insights",
-  "/settings": "Settings",
+const routeTitles: Record<string, TranslationKey> = {
+  "/dashboard": "nav.dashboard",
+  "/documents": "nav.documents",
+  "/documents/upload": "action.upload",
+  "/chat": "nav.chat",
+  "/history": "nav.history",
+  "/interactions": "nav.interactions",
+  "/trends": "nav.trends",
+  "/insights": "nav.insights",
+  "/settings": "nav.settings",
 }
 
-function getPageTitle(pathname: string): string {
+function getTitleKey(pathname: string): TranslationKey | null {
   if (routeTitles[pathname]) return routeTitles[pathname]
 
-  // Check for sub-routes (e.g. /documents/[id])
-  for (const [route, title] of Object.entries(routeTitles)) {
-    if (pathname.startsWith(route) && route !== "/dashboard") return title
-  }
+  // Longest match first, so /documents/upload does not resolve to /documents.
+  const match = Object.keys(routeTitles)
+    .filter((route) => route !== "/dashboard" && pathname.startsWith(route))
+    .sort((a, b) => b.length - a.length)[0]
 
-  // Fallback: capitalize the last segment
-  const segment = pathname.split("/").filter(Boolean).pop()
-  return segment ? segment.charAt(0).toUpperCase() + segment.slice(1) : "Tabeeb"
+  return match ? routeTitles[match] : null
 }
 
 export function TopBar() {
   const pathname = usePathname()
-  const title = getPageTitle(pathname)
+  const { t } = useLocale()
+  const titleKey = getTitleKey(pathname)
+  // Untranslated fallback for a route with no entry: the last path segment.
+  const title = titleKey
+    ? t(titleKey)
+    : pathname.split("/").filter(Boolean).pop()?.replace(/^./, (c) => c.toUpperCase()) ?? "Tabeeb"
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 backdrop-blur-sm px-4 lg:px-6">
