@@ -172,19 +172,19 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Button render={<Link href="/documents/upload" />}>
-            <Upload className="mr-2 size-4" />
+            <Upload className="me-2 size-4" />
             Upload Document
           </Button>
           <Button variant="outline" render={<Link href="/chat" />}>
-            <MessageSquare className="mr-2 size-4" />
+            <MessageSquare className="me-2 size-4" />
             Ask Tabeeb
           </Button>
           <Button variant="outline" render={<Link href="/documents/upload" />}>
-            <Mic className="mr-2 size-4" />
+            <Mic className="me-2 size-4" />
             Voice Note
           </Button>
           <Button variant="outline" render={<Link href="/trends" />}>
-            <TrendingUp className="mr-2 size-4" />
+            <TrendingUp className="me-2 size-4" />
             View Trends
           </Button>
         </CardContent>

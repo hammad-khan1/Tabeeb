@@ -204,7 +204,7 @@ export default function DocumentDetailPage() {
             size="sm"
             onClick={() => setDeleteDialogOpen(true)}
           >
-            <Trash2 className="mr-2 size-3.5" />
+            <Trash2 className="me-2 size-3.5" />
             Delete
           </Button>
         </div>
@@ -355,12 +355,12 @@ export default function DocumentDetailPage() {
                   >
                     {isConfirming ? (
                       <>
-                        <Loader2 className="mr-2 size-3.5 animate-spin" />
+                        <Loader2 className="me-2 size-3.5 animate-spin" />
                         Confirming...
                       </>
                     ) : (
                       <>
-                        <CheckCircle2 className="mr-2 size-3.5" />
+                        <CheckCircle2 className="me-2 size-3.5" />
                         Confirm Extraction
                       </>
                     )}
@@ -420,7 +420,7 @@ export default function DocumentDetailPage() {
                   {isImagingDoc && (
                     <TabsContent value="imaging" className="mt-4 space-y-3">
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                        <AlertTriangle className="mr-1.5 inline size-3.5" />
+                        <AlertTriangle className="me-1.5 inline size-3.5" />
                         AI-assisted analysis only. Not a substitute for professional radiological interpretation.
                       </div>
                       {imagingFindingsList.length > 0 ? (
@@ -548,24 +548,24 @@ export default function DocumentDetailPage() {
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="border-b text-left text-xs text-muted-foreground">
-                              <th className="pb-2 pr-3">Test</th>
-                              <th className="pb-2 pr-3">Value</th>
-                              <th className="pb-2 pr-3">Range</th>
+                            <tr className="border-b text-start text-xs text-muted-foreground">
+                              <th className="pb-2 pe-3">Test</th>
+                              <th className="pb-2 pe-3">Value</th>
+                              <th className="pb-2 pe-3">Range</th>
                               <th className="pb-2">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {structured.labResults.map((lab, i) => (
                               <tr key={i} className="border-b last:border-0">
-                                <td className="py-2 pr-3 font-medium">
+                                <td className="py-2 pe-3 font-medium">
                                   {lab.testName}
                                 </td>
-                                <td className="py-2 pr-3">
+                                <td className="py-2 pe-3">
                                   {lab.value}
                                   {lab.unit ? ` ${lab.unit}` : ""}
                                 </td>
-                                <td className="py-2 pr-3 text-muted-foreground">
+                                <td className="py-2 pe-3 text-muted-foreground">
                                   {lab.referenceRange ?? "N/A"}
                                 </td>
                                 <td className="py-2">
@@ -574,7 +574,7 @@ export default function DocumentDetailPage() {
                                       variant="destructive"
                                       className="text-[10px]"
                                     >
-                                      <AlertTriangle className="mr-1 size-3" />
+                                      <AlertTriangle className="me-1 size-3" />
                                       Abnormal
                                     </Badge>
                                   ) : (
@@ -662,12 +662,12 @@ export default function DocumentDetailPage() {
             >
               {isDeleting ? (
                 <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  <Loader2 className="me-2 size-4 animate-spin" />
                   Deleting...
                 </>
               ) : (
                 <>
-                  <Trash2 className="mr-2 size-4" />
+                  <Trash2 className="me-2 size-4" />
                   Delete
                 </>
               )}

@@ -183,11 +183,11 @@ export default function HistoryPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="mr-2 size-4" />
+            <Printer className="me-2 size-4" />
             Print
           </Button>
           <Button variant="outline" onClick={() => setShareDialogOpen(true)}>
-            <Share2 className="mr-2 size-4" />
+            <Share2 className="me-2 size-4" />
             Share
           </Button>
         </div>
@@ -281,7 +281,7 @@ export default function HistoryPage() {
       ) : (
         <div className="relative">
           {/* Vertical line */}
-          <div className="absolute left-[19px] top-0 bottom-0 w-px bg-border print:left-[15px]" />
+          <div className="absolute start-[19px] top-0 bottom-0 w-px bg-border print:start-[15px]" />
 
           <div className="space-y-8">
             {data.visitTimeline.map((group) => (
@@ -297,7 +297,7 @@ export default function HistoryPage() {
                 </div>
 
                 {/* Events */}
-                <div className="ml-14 space-y-3 print:ml-12">
+                <div className="ms-14 space-y-3 print:ms-12">
                   {group.events.map((event, i) => {
                     const EventIcon =
                       eventTypeIcons[event.type] ?? FileText;
@@ -396,12 +396,12 @@ export default function HistoryPage() {
                 <Button onClick={handleShare} disabled={shareLoading}>
                   {shareLoading ? (
                     <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      <Loader2 className="me-2 size-4 animate-spin" />
                       Generating...
                     </>
                   ) : (
                     <>
-                      <Link2 className="mr-2 size-4" />
+                      <Link2 className="me-2 size-4" />
                       Generate Link
                     </>
                   )}

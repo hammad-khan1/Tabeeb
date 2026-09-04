@@ -119,6 +119,10 @@ export default function SettingsPage() {
         throw new Error(err.error || "Failed to save settings");
       }
       await mutateUser();
+      // The interface language lives on <html lang/dir> in the root layout, which is a
+      // server component — without a refresh the setting saves but nothing visibly
+      // changes until the next full page load.
+      router.refresh();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: unknown) {
@@ -270,12 +274,12 @@ export default function SettingsPage() {
           {allergies.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {allergies.map((allergy) => (
-                <Badge key={allergy} variant="secondary" className="gap-1 pr-1">
+                <Badge key={allergy} variant="secondary" className="gap-1 pe-1">
                   {allergy}
                   <button
                     type="button"
                     onClick={() => removeAllergy(allergy)}
-                    className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    className="ms-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                   >
                     <X className="size-3" />
                   </button>
@@ -314,12 +318,12 @@ export default function SettingsPage() {
           {conditions.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {conditions.map((condition) => (
-                <Badge key={condition} variant="secondary" className="gap-1 pr-1">
+                <Badge key={condition} variant="secondary" className="gap-1 pe-1">
                   {condition}
                   <button
                     type="button"
                     onClick={() => removeCondition(condition)}
-                    className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    className="ms-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                   >
                     <X className="size-3" />
                   </button>
@@ -339,17 +343,17 @@ export default function SettingsPage() {
         <Button onClick={handleSave} disabled={isSaving}>
           {isSaving ? (
             <>
-              <Loader2 className="mr-2 size-4 animate-spin" />
+              <Loader2 className="me-2 size-4 animate-spin" />
               Saving...
             </>
           ) : saveSuccess ? (
             <>
-              <CheckCircle2 className="mr-2 size-4 text-emerald-500" />
+              <CheckCircle2 className="me-2 size-4 text-emerald-500" />
               Saved
             </>
           ) : (
             <>
-              <Save className="mr-2 size-4" />
+              <Save className="me-2 size-4" />
               Save Preferences
             </>
           )}
@@ -379,7 +383,7 @@ export default function SettingsPage() {
             className="mt-4"
             onClick={() => setDeleteDialogOpen(true)}
           >
-            <Trash2 className="mr-2 size-4" />
+            <Trash2 className="me-2 size-4" />
             Delete All Data
           </Button>
         </CardContent>
@@ -422,12 +426,12 @@ export default function SettingsPage() {
             >
               {isDeleting ? (
                 <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  <Loader2 className="me-2 size-4 animate-spin" />
                   Deleting...
                 </>
               ) : (
                 <>
-                  <Trash2 className="mr-2 size-4" />
+                  <Trash2 className="me-2 size-4" />
                   Delete Everything
                 </>
               )}

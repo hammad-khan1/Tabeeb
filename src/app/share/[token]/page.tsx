@@ -70,7 +70,7 @@ function Section({
         <CardTitle className="flex items-center gap-2 text-base">
           {icon}
           {title}
-          <span className="ml-auto text-sm font-normal text-muted-foreground tabular-nums">
+          <span className="ms-auto text-sm font-normal text-muted-foreground tabular-nums">
             {count}
           </span>
         </CardTitle>
@@ -205,27 +205,27 @@ export default async function SharedRecordPage({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-muted-foreground border-b">
-                  <th className="py-2 pr-4 font-medium">Test</th>
-                  <th className="py-2 pr-4 font-medium">Result</th>
-                  <th className="py-2 pr-4 font-medium">Reference</th>
+                <tr className="text-start text-muted-foreground border-b">
+                  <th className="py-2 pe-4 font-medium">Test</th>
+                  <th className="py-2 pe-4 font-medium">Result</th>
+                  <th className="py-2 pe-4 font-medium">Reference</th>
                   <th className="py-2 font-medium">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {history.recentLabResults.map((lab, i) => (
                   <tr key={i} className="border-b last:border-0">
-                    <td className="py-2 pr-4">{lab.testName}</td>
-                    <td className="py-2 pr-4 tabular-nums">
+                    <td className="py-2 pe-4">{lab.testName}</td>
+                    <td className="py-2 pe-4 tabular-nums">
                       <span className={lab.isAbnormal ? 'font-semibold text-destructive' : ''}>
                         {lab.value}
                         {lab.unit ? ` ${lab.unit}` : ''}
                       </span>
                       {lab.isAbnormal && (
-                        <span className="ml-2 text-xs uppercase tracking-wide">abnormal</span>
+                        <span className="ms-2 text-xs uppercase tracking-wide">abnormal</span>
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-muted-foreground tabular-nums">
+                    <td className="py-2 pe-4 text-muted-foreground tabular-nums">
                       {lab.referenceRange ?? '—'}
                     </td>
                     <td className="py-2 text-muted-foreground tabular-nums">

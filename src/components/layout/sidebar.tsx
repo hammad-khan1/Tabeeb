@@ -16,23 +16,26 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useLocale } from "@/components/providers/locale-provider";
+import type { TranslationKey } from "@/lib/i18n";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/chat", label: "Ask Tabeeb", icon: MessageSquare },
-  { href: "/history", label: "History", icon: Clock },
-  { href: "/interactions", label: "Interactions", icon: ShieldCheck },
-  { href: "/trends", label: "Trends", icon: TrendingUp },
-  { href: "/insights", label: "Insights", icon: Lightbulb },
-  { href: "/settings", label: "Settings", icon: Settings },
+const navItems: Array<{ href: string; key: TranslationKey; icon: React.ElementType }> = [
+  { href: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard },
+  { href: "/documents", key: "nav.documents", icon: FileText },
+  { href: "/chat", key: "nav.chat", icon: MessageSquare },
+  { href: "/history", key: "nav.history", icon: Clock },
+  { href: "/interactions", key: "nav.interactions", icon: ShieldCheck },
+  { href: "/trends", key: "nav.trends", icon: TrendingUp },
+  { href: "/insights", key: "nav.insights", icon: Lightbulb },
+  { href: "/settings", key: "nav.settings", icon: Settings },
 ]
 
 export function Sidebar() {
+  const { t } = useLocale();
   const pathname = usePathname()
 
   return (
-    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-border lg:bg-sidebar">
+    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-e lg:border-border lg:bg-sidebar">
       {/* Branding */}
       <div className="flex h-14 items-center gap-2.5 px-5 border-b border-border">
         <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -64,7 +67,7 @@ export function Sidebar() {
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                {item.label}
+                {t(item.key)}
               </Link>
             )
           })}

@@ -225,12 +225,12 @@ export default function InteractionsPage() {
                 >
                   {isChecking ? (
                     <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      <Loader2 className="me-2 size-4 animate-spin" />
                       Checking...
                     </>
                   ) : (
                     <>
-                      <Search className="mr-2 size-4" />
+                      <Search className="me-2 size-4" />
                       Check
                     </>
                   )}

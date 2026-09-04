@@ -130,9 +130,26 @@
 }
 
 @layer utilities {
+  /* For a block of Urdu content inside an otherwise English page — a summary or a
+     transcript. Forces RTL regardless of the interface direction. */
   .font-urdu {
     font-family: var(--font-urdu), serif;
     direction: rtl;
     line-height: 2;
+  }
+
+  /* The interface face when the whole app is in Urdu. Direction comes from `dir` on
+     <html>, so it is deliberately not set here. Nastaliq is a tall script and needs
+     the extra leading to stay legible at UI sizes. */
+  .font-urdu-ui {
+    font-family: var(--font-urdu), var(--font-sans), sans-serif;
+    line-height: 1.9;
+  }
+
+  /* Nastaliq has no real bold; faux-bolding it smears the joins. */
+  .font-urdu-ui :is(b, strong, .font-bold, .font-semibold, .font-medium) {
+    font-weight: 400;
+    color: inherit;
+    text-shadow: 0 0 0.4px currentColor;
   }
 }

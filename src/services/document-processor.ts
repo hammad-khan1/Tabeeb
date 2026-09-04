@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import {
+  users,
   documents,
   documentChunks,
   medications,
@@ -471,6 +472,16 @@ async function embedAndStoreChunks(
  * alone and then write every derived row with whatever `userId` they were handed —
  * safe only because all three callers happened to check first.
  */
+/** The patient's interface language, which the summary is written in. */
+async function getPreferredLanguage(userId: string): Promise<'en' | 'ur' | 'mixed' | null> {
+  const [row] = await getDb()
+    .select({ preferredLanguage: users.preferredLanguage })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.preferredLanguage ?? null;
+}
+
 async function loadOwnedDocument(documentId: string, userId: string) {
   const [doc] = await getDb()
     .select()
@@ -610,6 +621,7 @@ export async function processDocument(documentId: string, userId: string): Promi
       extraction: structured,
       documentType: doc.documentType,
       language: structured.language ?? doc.language ?? 'mixed',
+      preferredLanguage: await getPreferredLanguage(userId),
       isHandwritten: extraction.isHandwritten ?? doc.isHandwritten ?? false,
       confidence,
     });
@@ -682,6 +694,7 @@ export async function applyConfirmedExtraction(
     extraction: structured,
     documentType: doc.documentType,
     language: structured.language ?? doc.language ?? 'mixed',
+    preferredLanguage: await getPreferredLanguage(userId),
     isHandwritten: doc.isHandwritten ?? false,
     confidence: doc.extractionConfidence,
   });

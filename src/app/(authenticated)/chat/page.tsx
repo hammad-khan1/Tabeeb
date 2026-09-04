@@ -147,7 +147,7 @@ export default function ChatPage() {
                   <button
                     key={conv.conversationId}
                     onClick={() => loadConversation(conv.conversationId)}
-                    className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    className={`w-full truncate rounded-lg px-3 py-2 text-start text-sm transition-colors ${
                       conversationId === conv.conversationId
                         ? "bg-primary/10 text-primary"
                         : "hover:bg-muted"
@@ -194,11 +194,11 @@ export default function ChatPage() {
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="hidden md:flex"
             >
-              <History className="mr-2 size-3.5" />
+              <History className="me-2 size-3.5" />
               History
             </Button>
             <Button variant="ghost" size="sm" onClick={startNewConversation}>
-              <Plus className="mr-2 size-3.5" />
+              <Plus className="me-2 size-3.5" />
               New Chat
             </Button>
           </div>
@@ -261,7 +261,7 @@ export default function ChatPage() {
                       msg.sources &&
                       msg.sources.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
-                          <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          <span className="me-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                             Sources:
                           </span>
                           {msg.sources.map(
@@ -315,7 +315,7 @@ export default function ChatPage() {
               }}
               onKeyDown={handleKeyDown}
               placeholder="Ask about your health records..."
-              className="min-h-[44px] resize-none pr-12"
+              className="min-h-[44px] resize-none pe-12"
               rows={1}
             />
           </div>
@@ -365,7 +365,7 @@ export default function ChatPage() {
 
             {!isRecording && !audioBlob && (
               <Button size="lg" onClick={startRecording}>
-                <Mic className="mr-2 size-5" />
+                <Mic className="me-2 size-5" />
                 Start Recording
               </Button>
             )}
@@ -376,7 +376,7 @@ export default function ChatPage() {
                   Recording
                 </Badge>
                 <Button variant="destructive" size="lg" onClick={stopRecording}>
-                  <Square className="mr-2 size-4" />
+                  <Square className="me-2 size-4" />
                   Stop
                 </Button>
               </div>
@@ -399,7 +399,7 @@ export default function ChatPage() {
                   >
                     {transcribing ? (
                       <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        <Loader2 className="me-2 size-4 animate-spin" />
                         Transcribing...
                       </>
                     ) : (

@@ -126,12 +126,12 @@ export default function InsightsPage() {
         <Button onClick={handleGenerate} disabled={isGenerating}>
           {isGenerating ? (
             <>
-              <Loader2 className="mr-2 size-4 animate-spin" />
+              <Loader2 className="me-2 size-4 animate-spin" />
               Generating...
             </>
           ) : (
             <>
-              <Sparkles className="mr-2 size-4" />
+              <Sparkles className="me-2 size-4" />
               Generate New Insight
             </>
           )}
@@ -179,7 +179,7 @@ export default function InsightsPage() {
                 an AI-powered analysis of your health records.
               </p>
               <Button className="mt-4" variant="outline" render={<Link href="/documents/upload" />}>
-                <FileText className="mr-2 size-4" />
+                <FileText className="me-2 size-4" />
                 Upload Documents
               </Button>
             </CardContent>

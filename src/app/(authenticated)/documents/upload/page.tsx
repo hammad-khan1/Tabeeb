@@ -425,12 +425,12 @@ export default function UploadPage() {
           >
             {uploadStatus === "uploading" ? (
               <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
+                <Loader2 className="me-2 size-4 animate-spin" />
                 Uploading...
               </>
             ) : (
               <>
-                <Upload className="mr-2 size-4" />
+                <Upload className="me-2 size-4" />
                 Upload Document
               </>
             )}
@@ -446,7 +446,7 @@ export default function UploadPage() {
             setVoiceDialogOpen(true);
           }}
         >
-          <Mic className="mr-2 size-4" />
+          <Mic className="me-2 size-4" />
           Voice Intake
         </Button>
       </div>
@@ -475,7 +475,7 @@ export default function UploadPage() {
 
             {!isRecording && !audioBlob && (
               <Button size="lg" onClick={startRecording}>
-                <Mic className="mr-2 size-5" />
+                <Mic className="me-2 size-5" />
                 Start Recording
               </Button>
             )}
@@ -486,7 +486,7 @@ export default function UploadPage() {
                   Recording
                 </Badge>
                 <Button variant="destructive" size="lg" onClick={stopRecording}>
-                  <Square className="mr-2 size-4" />
+                  <Square className="me-2 size-4" />
                   Stop
                 </Button>
               </div>
@@ -511,12 +511,12 @@ export default function UploadPage() {
                   <Button onClick={handleVoiceUpload} disabled={voiceUploading}>
                     {voiceUploading ? (
                       <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        <Loader2 className="me-2 size-4 animate-spin" />
                         Processing...
                       </>
                     ) : (
                       <>
-                        <Upload className="mr-2 size-4" />
+                        <Upload className="me-2 size-4" />
                         Upload
                       </>
                     )}

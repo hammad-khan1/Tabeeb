@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@/lib/db';
 import { getGroq, MODELS } from '@/lib/groq';
+import { estimateTokenCount } from '@/lib/tokens';
 import {
   documents,
   medications,
@@ -73,9 +74,51 @@ Guidelines:
 - Be conservative: recommend doctor consultation for anything uncertain
 - Do NOT fabricate findings not supported by the data`;
 
+/**
+ * Caps on what goes into the digest prompt.
+ *
+ * None of these queries had a limit: the whole record — every document, medication,
+ * diagnosis, lab result and allergy — was formatted into a single prompt. This is the
+ * most token-expensive call in the app, and on a patient with a few years of history
+ * it would silently exceed the context window and be truncated mid-record rather than
+ * failing cleanly.
+ *
+ * The bias is toward recency, because a digest is about the patient's current state.
+ * Allergies are capped highest and never filtered by date — an old allergy is still
+ * an allergy.
+ */
+const LIMITS = {
+  documents: 40,
+  medications: 40,
+  diagnoses: 30,
+  labResults: 60,
+  allergies: 50,
+} as const;
+
+/** Leaves room for the system prompt and a 4096-token response. */
+const MAX_SUMMARY_TOKENS = 8000;
+
+function capToTokenBudget(text: string, maxTokens: number): string {
+  if (estimateTokenCount(text) <= maxTokens) return text;
+
+  // Drop whole lines from the end so a record entry is never cut in half.
+  const lines = text.split('\n');
+  const kept: string[] = [];
+  let used = 0;
+  for (const line of lines) {
+    const cost = estimateTokenCount(line);
+    if (used + cost > maxTokens) break;
+    kept.push(line);
+    used += cost;
+  }
+  kept.push('', '(Older entries omitted to stay within the review limit.)');
+  return kept.join('\n');
+}
+
 async function fetchPatientData(userId: string) {
   const [docRows, medRows, diagRows, labRows, allergyRows] = await Promise.all([
-    getDb()      .select({
+    getDb()
+      .select({
         id: documents.id,
         title: documents.title,
         documentType: documents.documentType,
@@ -83,19 +126,34 @@ async function fetchPatientData(userId: string) {
         hospital: documents.hospital,
       })
       .from(documents)
-      .where(eq(documents.userId, userId)),
-    getDb()      .select()
+      .where(eq(documents.userId, userId))
+      .orderBy(desc(documents.documentDate), desc(documents.createdAt))
+      .limit(LIMITS.documents),
+    // Active medicines first: an inactive one is history, not current state.
+    getDb()
+      .select()
       .from(medications)
-      .where(eq(medications.userId, userId)),
-    getDb()      .select()
+      .where(eq(medications.userId, userId))
+      .orderBy(desc(medications.isActive), desc(medications.prescribedDate))
+      .limit(LIMITS.medications),
+    getDb()
+      .select()
       .from(diagnoses)
-      .where(eq(diagnoses.userId, userId)),
-    getDb()      .select()
+      .where(eq(diagnoses.userId, userId))
+      .orderBy(desc(diagnoses.diagnosedDate))
+      .limit(LIMITS.diagnoses),
+    // Abnormal results first, then most recent — the ones a digest should reason about.
+    getDb()
+      .select()
       .from(labResults)
-      .where(eq(labResults.userId, userId)),
-    getDb()      .select()
+      .where(eq(labResults.userId, userId))
+      .orderBy(desc(labResults.isAbnormal), desc(labResults.testDate))
+      .limit(LIMITS.labResults),
+    getDb()
+      .select()
       .from(allergies)
-      .where(eq(allergies.userId, userId)),
+      .where(eq(allergies.userId, userId))
+      .limit(LIMITS.allergies),
   ]);
 
   return {
@@ -169,7 +227,9 @@ function determinePriority(findings: HealthFinding[]): string {
 
 export async function generateHealthDigest(userId: string): Promise<HealthDigestResult> {
   const data = await fetchPatientData(userId);
-  const patientSummary = buildPatientSummary(data);
+  // Backstop behind the row caps: however the record is shaped, the prompt stays
+  // inside the context window rather than being silently truncated mid-record.
+  const patientSummary = capToTokenBudget(buildPatientSummary(data), MAX_SUMMARY_TOKENS);
   const documentIds = data.documents.map((d) => d.id);
 
   const response = await getGroq().chat.completions.create({

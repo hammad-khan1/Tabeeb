@@ -188,7 +188,7 @@ export default function TrendsPage() {
             {availableTests.map((test) => (
               <SelectItem key={test.key} value={test.display}>
                 {test.display}
-                <span className="ml-2 text-muted-foreground tabular-nums">
+                <span className="ms-2 text-muted-foreground tabular-nums">
                   {test.count}
                 </span>
               </SelectItem>
@@ -405,22 +405,22 @@ export default function TrendsPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b text-left text-xs text-muted-foreground">
-                        <th className="pb-2 pr-4">Date</th>
-                        <th className="pb-2 pr-4">Value</th>
-                        <th className="pb-2 pr-4">Reference</th>
+                      <tr className="border-b text-start text-xs text-muted-foreground">
+                        <th className="pb-2 pe-4">Date</th>
+                        <th className="pb-2 pe-4">Value</th>
+                        <th className="pb-2 pe-4">Reference</th>
                         <th className="pb-2">Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {trendData.rawResults.map((result, i) => (
                         <tr key={result.id ?? i} className="border-b last:border-0">
-                          <td className="py-2 pr-4">{formatDate(result.testDate)}</td>
-                          <td className="py-2 pr-4 font-medium">
+                          <td className="py-2 pe-4">{formatDate(result.testDate)}</td>
+                          <td className="py-2 pe-4 font-medium">
                             {result.value}
                             {result.unit ? ` ${result.unit}` : ""}
                           </td>
-                          <td className="py-2 pr-4 text-muted-foreground">
+                          <td className="py-2 pe-4 text-muted-foreground">
                             {result.referenceRange ?? "N/A"}
                           </td>
                           <td className="py-2">
@@ -429,7 +429,7 @@ export default function TrendsPage() {
                                 variant="destructive"
                                 className="text-[10px]"
                               >
-                                <AlertTriangle className="mr-1 size-3" />
+                                <AlertTriangle className="me-1 size-3" />
                                 Abnormal
                               </Badge>
                             ) : (
