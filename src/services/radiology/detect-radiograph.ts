@@ -14,19 +14,25 @@ import sharp from 'sharp';
  * The discriminator is tone, not colour. The obvious guess — that a radiograph is
  * greyscale — is wrong for the images this app actually receives: a phone photo of a
  * film on a lightbox carries a strong colour cast, and measured against real uploads
- * the X-ray was *more* chromatic than the prescription (chroma 17.5 vs 12.7). What
- * separates them cleanly is that a document is mostly bright paper and a radiograph is
- * mostly dark surround:
+ * the X-ray was *more* chromatic than the prescription (chroma 17.5 vs 12.7).
  *
- *                    mean    very dark   very light
- *   chest X-ray      90.9      18.8%        6.4%
- *   prescription    179.5       0.5%       21.1%
+ * Measured across all three kinds of image that turn up:
  *
- * Calibrated on a small sample, so the thresholds sit near the midpoints with wide
- * margins, and — importantly — a positive result only ever *adds* the classifier pass.
- * It never suppresses text extraction, because a document wrongly judged a radiograph
- * would otherwise lose its medications, while a radiograph wrongly judged a document
- * costs only a redundant OCR.
+ *                              mean    very dark   very light
+ *   digital radiograph        112.8       3.1%        0.7%
+ *   phone photo of a film      98.5      18.8%        6.4%
+ *   photographed prescription 174.5       0.5%       21.1%
+ *
+ * Brightness and the blown-out-white fraction separate radiographs from documents
+ * cleanly. The dark fraction needs care: a properly windowed radiograph fills the
+ * frame with anatomy and has almost no black surround, so a threshold calibrated on
+ * the phone photo (whose black comes from the room around the lightbox) rejected
+ * genuine X-ray files. It sits low enough to admit both.
+ *
+ * A positive result only ever *adds* the classifier pass; it never suppresses text
+ * extraction. A document wrongly judged a radiograph would otherwise lose its
+ * medications, while a radiograph wrongly judged a document costs only a redundant
+ * OCR — that asymmetry sets the thresholds' direction.
  */
 
 export interface RadiographDetection {
@@ -43,8 +49,12 @@ export interface RadiographDetection {
 /** Below this an image is "mostly dark"; paper documents sit far above it. */
 const MAX_MEAN_BRIGHTNESS = 140;
 
-/** A radiograph has a substantial black surround outside the anatomy. */
-const MIN_DARK_FRACTION = 0.05;
+/**
+ * Some genuinely black pixels, which paper under even lighting does not produce.
+ * Deliberately low: a digital radiograph measured 3.1% and a photographed
+ * prescription 0.5%, so the useful line is well below the phone photo's 18.8%.
+ */
+const MIN_DARK_FRACTION = 0.015;
 
 /** Paper blows out to white over large areas; a film does not. */
 const MAX_LIGHT_FRACTION = 0.15;

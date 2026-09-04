@@ -221,6 +221,19 @@ class HuggingFaceClassifier implements RadiologyClassifier {
     }
 
     scores.sort((a, b) => b.probability - a.probability);
+
+    // A photographed film is the common case and the model cannot read it. Reporting
+    // its undiscriminating output as findings would be worse than reporting nothing.
+    if (!isDiscriminating(scores)) {
+      return {
+        scores,
+        flagged: [],
+        modelId: this.modelId,
+        unavailableReason:
+          'The screening model could not read this image reliably — its results were no better than guessing. This usually means it is a photograph of an X-ray on a screen or lightbox rather than the X-ray file itself. Ask the hospital for the digital image, or photograph the film straight-on, filling the frame, with no glare.',
+      };
+    }
+
     return { scores, flagged: selectFlagged(scores), modelId: this.modelId };
   }
 
@@ -244,6 +257,43 @@ class NullClassifier implements RadiologyClassifier {
         'No X-ray analysis model is configured, so this image was not analysed. Only text found on the image was read.',
     };
   }
+}
+
+/**
+ * Whether the model actually discriminated, or just returned its priors.
+ *
+ * Measured on a real chest film versus a phone photo of that film on a lightbox —
+ * the second is what patients actually upload, and the model cannot read it:
+ *
+ *                          median   scores in 0.4-0.6   lowest score
+ *   true radiograph         0.106        11%               0.001
+ *   phone photo of film     0.502        56%               0.009
+ *
+ * On a real radiograph most pathologies are driven near zero and a few stand out. On
+ * an out-of-distribution image everything collapses onto the decision boundary. Left
+ * unchecked that reads as ten simultaneous findings, and the reporting thresholds
+ * would have told a patient they might have a pneumothorax (0.501) and a fracture
+ * (0.502) — from noise.
+ *
+ * So an undiscriminating result is reported as "could not assess", never as findings.
+ */
+const MAX_MEDIAN_SCORE = 0.3;
+const MAX_UNCERTAIN_FRACTION = 0.35;
+const UNCERTAIN_BAND: readonly [number, number] = [0.4, 0.6];
+
+export function isDiscriminating(scores: PathologyScore[]): boolean {
+  if (scores.length < 5) return true; // Too few labels to judge the shape.
+
+  const values = scores.map((s) => s.probability).sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  const median =
+    values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
+
+  const uncertain =
+    values.filter((v) => v >= UNCERTAIN_BAND[0] && v <= UNCERTAIN_BAND[1]).length /
+    values.length;
+
+  return median <= MAX_MEDIAN_SCORE && uncertain <= MAX_UNCERTAIN_FRACTION;
 }
 
 export function selectFlagged(scores: PathologyScore[]): PathologyScore[] {
