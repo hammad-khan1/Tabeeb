@@ -561,6 +561,19 @@ export async function processDocument(documentId: string, userId: string): Promi
       .where(eq(documents.id, documentId));
 
     const notes: string[] = [...reconciliation.notes];
+
+    // An image that looks like a radiograph is refiled as one, so it shows the right
+    // icon, appears under imaging, and is screened on any future reprocess without
+    // the user having to know about the type dropdown.
+    if (extraction.detectedAsRadiograph) {
+      await getDb()
+        .update(documents)
+        .set({ documentType: 'imaging_report', updatedAt: new Date() })
+        .where(eq(documents.id, documentId));
+      notes.push(
+        'This looked like an X-ray or scan rather than a paper document, so it was filed as an imaging report and checked by the screening model.'
+      );
+    }
     const lowConfidence = confidence !== null && confidence < LOW_CONFIDENCE_THRESHOLD;
 
     if (lowConfidence) {
@@ -607,14 +620,20 @@ export async function processDocument(documentId: string, userId: string): Promi
 
     await embedAndStoreChunks(documentId, userId, chunks);
 
-    if (isExtractionEmpty(structured)) {
+    const isImaging =
+      doc.documentType === 'imaging_report' || extraction.detectedAsRadiograph === true;
+
+    // "No medical entities were identified" is the wrong message for an X-ray: a film
+    // carries a study label, not a medication list, so an empty extraction is the
+    // expected result rather than something for the patient to go and check.
+    if (isExtractionEmpty(structured) && !isImaging) {
       notes.push('No medical entities were identified in this document — please review the extracted text.');
     }
     if (extraction.isHandwritten) {
       notes.push('Handwritten content detected — please verify drug names and numbers against the original.');
     }
 
-    const needsReview = lowConfidence || isExtractionEmpty(structured);
+    const needsReview = lowConfidence || (isExtractionEmpty(structured) && !isImaging);
 
     const summary = await generateDocumentSummary({
       text,

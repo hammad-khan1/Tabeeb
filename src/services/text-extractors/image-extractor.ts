@@ -6,6 +6,7 @@ import {
   type NormalizedImage,
 } from './image-normalizer';
 import { getRadiologyClassifier, type ClassificationResult } from '@/services/radiology/classifier';
+import { detectRadiograph } from '@/services/radiology/detect-radiograph';
 import { buildFindings, type ValidatedFinding } from '@/services/radiology/validator';
 
 /**
@@ -21,6 +22,8 @@ export interface ImageExtractionResult {
   radiologyFindings?: ValidatedFinding[];
   /** Raw classifier output, so the caller can report what was and was not checked. */
   classification?: ClassificationResult;
+  /** True when the image looked like a radiograph but was not filed as one. */
+  detectedAsRadiograph?: boolean;
 }
 
 const VISION_MAX_TOKENS = 8192;
@@ -246,10 +249,21 @@ export async function extractFromImage(
     isHandwritten: ocr.isHandwritten,
   };
 
-  if (documentType === 'imaging_report') {
+  // Screening runs when the document is filed as imaging OR when the image itself
+  // looks like a radiograph. The upload form defaults to "Other" and users do not
+  // change it, so relying on the dropdown alone meant X-rays were never analysed —
+  // they just had their burned-in study label read back by OCR.
+  //
+  // Detection only ever *adds* this pass. Text extraction above always runs, so a
+  // document misjudged as a film still gets its medications extracted.
+  const filedAsImaging = documentType === 'imaging_report';
+  const detection = filedAsImaging ? null : await detectRadiograph(buffer);
+
+  if (filedAsImaging || detection?.isRadiograph) {
     const { findings, classification } = await classifyRadiologyImage(buffer, mimeType);
     result.radiologyFindings = findings;
     result.classification = classification;
+    result.detectedAsRadiograph = !filedAsImaging;
   }
 
   return result;

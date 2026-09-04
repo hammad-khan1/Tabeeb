@@ -12,6 +12,8 @@ export interface ExtractionResult {
   radiologyFindings?: RadiologyFinding[];
   /** Present for imaging documents: what the X-ray classifier did or could not check. */
   classification?: ClassificationResult;
+  /** True when the image looked like a radiograph but was not filed as one. */
+  detectedAsRadiograph?: boolean;
 }
 
 /** Dispatch is driven by the same map the uploader validates against, so the two cannot drift. */
@@ -106,6 +108,7 @@ export async function extractText(
       confidence: result.confidence,
       radiologyFindings: result.radiologyFindings,
       classification: result.classification,
+      detectedAsRadiograph: result.detectedAsRadiograph,
     };
   }
 
