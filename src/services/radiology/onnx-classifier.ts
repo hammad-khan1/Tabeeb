@@ -140,7 +140,7 @@ export class OnnxRadiologyClassifier implements RadiologyClassifier {
   // mimeType is part of the RadiologyClassifier contract and used by the HTTP
   // backend; sharp sniffs the format from the bytes, so it is unused here.
   async classify(image: Buffer, _mimeType: string): Promise<ClassificationResult> {
-    const { isDiscriminating, selectFlagged } = await import('./classifier');
+    const { hasFlatDistribution, selectFlagged } = await import('./classifier');
 
     try {
       await this.load();
@@ -186,19 +186,12 @@ export class OnnxRadiologyClassifier implements RadiologyClassifier {
 
     scores.sort((a, b) => b.probability - a.probability);
 
-    // A photographed film is the common upload and the model cannot read it; its
-    // undiscriminating output must not be reported as findings.
-    if (!isDiscriminating(scores)) {
-      return {
-        scores,
-        flagged: [],
-        modelId: this.modelId,
-        unavailableReason:
-          'The screening model could not read this image reliably — its results were no better than guessing. This usually means it is a photograph of an X-ray on a screen or lightbox rather than the X-ray file itself. Ask the hospital for the digital image, or photograph the film straight-on, filling the frame, with no glare.',
-      };
-    }
-
-    return { scores, flagged: selectFlagged(scores), modelId: this.modelId };
+    return {
+      scores,
+      flagged: selectFlagged(scores),
+      modelId: this.modelId,
+      lowConfidenceSpread: hasFlatDistribution(scores),
+    };
   }
 
   private unavailable(reason: string): ClassificationResult {

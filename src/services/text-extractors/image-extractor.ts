@@ -232,15 +232,23 @@ async function classifyRadiologyImage(
   mimeType: string
 ): Promise<{
   findings: ValidatedFinding[];
-  classification: ClassificationResult;
-  description: RadiographDescription;
+  classification?: ClassificationResult;
+  description?: RadiographDescription;
 }> {
   const normalized = await normalizeForVision(buffer, mimeType);
   const classifier = await resolveRadiologyClassifier();
 
-  // Describe first, because the description says which part of the body this is, and
-  // that decides whether the chest classifier may run at all.
+  // Describe first. The description reports the body region, which decides both
+  // whether this is a radiograph at all and whether the chest classifier may run —
+  // the tone heuristic upstream is deliberately loose, so the model is the authority.
   const description = await describeRadiograph(normalized.buffer);
+
+  // The heuristic said radiograph; the model says otherwise. Trust the model and
+  // produce nothing, so a dark photograph of a prescription is not written up as an
+  // X-ray that could not be screened.
+  if (description.bodyRegion === 'not an x-ray') {
+    return { findings: [], classification: undefined, description: undefined };
+  }
 
   // The chest classifier scores chest pathologies on whatever pixels it is given. Run
   // unguarded it reported pneumonia at 73% on a photograph of a leg — confident,
@@ -290,10 +298,12 @@ export async function extractFromImage(
 
   if (filedAsImaging || detection?.isRadiograph) {
     const { findings, classification, description } = await classifyRadiologyImage(buffer, mimeType);
-    result.radiologyFindings = findings;
-    result.classification = classification;
-    result.radiographDescription = description;
-    result.detectedAsRadiograph = !filedAsImaging;
+    if (description) {
+      result.radiologyFindings = findings;
+      result.classification = classification;
+      result.radiographDescription = description;
+      result.detectedAsRadiograph = !filedAsImaging;
+    }
   }
 
   return result;

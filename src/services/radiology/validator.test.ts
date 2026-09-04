@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildFindings, buildImagingNote } from './validator';
 import {
   selectFlagged,
-  isDiscriminating,
+  hasFlatDistribution,
   type ClassificationResult,
   type PathologyScore,
 } from './classifier';
@@ -31,11 +31,20 @@ describe('selectFlagged', () => {
     expect(selectFlagged([{ pathology: 'Emphysema', probability: 0.2 }])).toHaveLength(0);
   });
 
-  it('flags a time-critical finding at a lower threshold', () => {
-    // A pneumothorax the patient never mentions to a doctor is worse than one extra
-    // conversation, so these surface earlier — always labelled as needing confirmation.
-    expect(selectFlagged([{ pathology: 'Pneumothorax', probability: 0.4 }])).toHaveLength(1);
+  it('does not flag below the operating point, even for a critical pathology', () => {
+    // 0.5 is the model's own calibrated boundary. Reporting beneath it produced
+    // "pneumothorax, critical, 41%" from an image the model could not read.
+    expect(selectFlagged([{ pathology: 'Pneumothorax', probability: 0.4 }])).toHaveLength(0);
     expect(selectFlagged([{ pathology: 'Atelectasis', probability: 0.4 }])).toHaveLength(0);
+  });
+
+  it('caps how many findings a patient is shown', () => {
+    // Eleven near-threshold labels read as a catastrophe and convey nothing.
+    const many = Array.from({ length: 11 }, (_, i) => ({
+      pathology: 'Nodule' as const,
+      probability: 0.55 - i * 0.001,
+    }));
+    expect(selectFlagged(many)).toHaveLength(4);
   });
 
   it('orders by probability', () => {
@@ -110,7 +119,7 @@ describe('buildImagingNote', () => {
   });
 });
 
-describe('out-of-distribution guard', () => {
+describe('flat-distribution caveat', () => {
   // Real measurements: a true radiograph drives most pathologies near zero, while a
   // phone photo of a film on a lightbox collapses everything onto the decision
   // boundary. Reporting the second as findings would have told a patient they might
@@ -137,23 +146,35 @@ describe('out-of-distribution guard', () => {
     ] as const
   ).map(([pathology, probability]) => ({ pathology, probability }) as PathologyScore);
 
-  it('accepts a discriminating result from a real radiograph', () => {
-    expect(isDiscriminating(REAL_RADIOGRAPH)).toBe(true);
+  it('does not flag a normal chest film, where scores sit near zero', () => {
+    expect(hasFlatDistribution(REAL_RADIOGRAPH)).toBe(false);
   });
 
-  it('rejects scores collapsed onto the decision boundary', () => {
-    expect(isDiscriminating(PHOTO_OF_FILM)).toBe(false);
+  it('flags scores collapsed onto the operating point', () => {
+    expect(hasFlatDistribution(PHOTO_OF_FILM)).toBe(true);
   });
 
-  it('would otherwise have flagged a pneumothorax and a fracture from noise', () => {
-    // What the reporting thresholds do to that input if the guard is bypassed.
-    const flagged = selectFlagged(PHOTO_OF_FILM).map((s) => s.pathology);
-    expect(flagged).toContain('Pneumothorax');
-    expect(flagged).toContain('Fracture');
-    expect(flagged.length).toBeGreaterThan(8);
+  it('does not suppress findings on an abnormal chest film', () => {
+    // Measured on a clean frontal chest X-ray showing miliary TB. Many pathologies
+    // are genuinely elevated at once — which an earlier refusal gate mistook for "no
+    // signal", hiding a plausible result from exactly the patients who needed it.
+    const miliaryTb: PathologyScore[] = (
+      [
+        ['Nodule', 0.554], ['Mass', 0.542], ['Enlarged Cardiomediastinum', 0.527],
+        ['Lung Lesion', 0.526], ['Infiltration', 0.518], ['Pneumonia', 0.509],
+        ['Pneumothorax', 0.507], ['Fracture', 0.506], ['Fibrosis', 0.505],
+        ['Emphysema', 0.505], ['Lung Opacity', 0.502], ['Consolidation', 0.423],
+        ['Pleural Thickening', 0.29], ['Effusion', 0.182], ['Cardiomegaly', 0.116],
+        ['Atelectasis', 0.112], ['Edema', 0.056], ['Hernia', 0.002],
+      ] as const
+    ).map(([pathology, probability]) => ({ pathology, probability }) as PathologyScore);
+
+    // It may carry the caveat, but the findings must still be produced.
+    expect(selectFlagged(miliaryTb).length).toBeGreaterThan(0);
+    expect(selectFlagged(miliaryTb)[0].pathology).toBe('Nodule');
   });
 
   it('does not judge a result with too few labels to have a shape', () => {
-    expect(isDiscriminating([{ pathology: 'Effusion', probability: 0.5 }])).toBe(true);
+    expect(hasFlatDistribution([{ pathology: 'Effusion', probability: 0.5 }])).toBe(false);
   });
 });

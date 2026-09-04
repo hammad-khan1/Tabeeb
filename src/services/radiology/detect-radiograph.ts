@@ -16,23 +16,24 @@ import sharp from 'sharp';
  * film on a lightbox carries a strong colour cast, and measured against real uploads
  * the X-ray was *more* chromatic than the prescription (chroma 17.5 vs 12.7).
  *
- * Measured across all three kinds of image that turn up:
+ * Measured across the images this app has actually received:
  *
  *                              mean    very dark   very light
- *   digital radiograph        112.8       3.1%        0.7%
+ *   chest X-ray (miliary TB)  126.8      16.8%       18.2%
  *   phone photo of a film      98.5      18.8%        6.4%
+ *   digital limb radiograph    44.8      68.4%        1.8%
  *   photographed prescription 174.5       0.5%       21.1%
  *
- * Brightness and the blown-out-white fraction separate radiographs from documents
- * cleanly. The dark fraction needs care: a properly windowed radiograph fills the
- * frame with anatomy and has almost no black surround, so a threshold calibrated on
- * the phone photo (whose black comes from the room around the lightbox) rejected
- * genuine X-ray files. It sits low enough to admit both.
+ * Only two signals actually separate them: overall darkness, and the presence of
+ * genuinely black pixels that paper under even lighting does not produce. A
+ * blown-out-white ceiling looked useful on the first three samples and then rejected
+ * a real chest X-ray, whose bright lung fields reach 18.2% against the prescription's
+ * 21.1% — the two classes overlap on that axis, so it is not used.
  *
- * A positive result only ever *adds* the classifier pass; it never suppresses text
- * extraction. A document wrongly judged a radiograph would otherwise lose its
- * medications, while a radiograph wrongly judged a document costs only a redundant
- * OCR — that asymmetry sets the thresholds' direction.
+ * This is deliberately high-recall rather than precise. A radiograph missed here is
+ * never analysed at all; a document caught here costs one description call and is
+ * then rejected by the describer, which reports the body region and can say the image
+ * is not a radiograph. Cheap statistics propose, the model disposes.
  */
 
 export interface RadiographDetection {
@@ -47,7 +48,7 @@ export interface RadiographDetection {
 }
 
 /** Below this an image is "mostly dark"; paper documents sit far above it. */
-const MAX_MEAN_BRIGHTNESS = 140;
+const MAX_MEAN_BRIGHTNESS = 150;
 
 /**
  * Some genuinely black pixels, which paper under even lighting does not produce.
@@ -55,9 +56,6 @@ const MAX_MEAN_BRIGHTNESS = 140;
  * prescription 0.5%, so the useful line is well below the phone photo's 18.8%.
  */
 const MIN_DARK_FRACTION = 0.015;
-
-/** Paper blows out to white over large areas; a film does not. */
-const MAX_LIGHT_FRACTION = 0.15;
 
 const DARK_LEVEL = 40;
 const LIGHT_LEVEL = 205;
@@ -95,9 +93,7 @@ export async function detectRadiograph(buffer: Buffer): Promise<RadiographDetect
     const lightFraction = light / pixels.length;
 
     const isRadiograph =
-      meanBrightness < MAX_MEAN_BRIGHTNESS &&
-      darkFraction > MIN_DARK_FRACTION &&
-      lightFraction < MAX_LIGHT_FRACTION;
+      meanBrightness < MAX_MEAN_BRIGHTNESS && darkFraction > MIN_DARK_FRACTION;
 
     // Distance past each threshold, averaged — used only for logging and the note
     // shown to the user, never to gate anything.
@@ -105,9 +101,8 @@ export async function detectRadiograph(buffer: Buffer): Promise<RadiographDetect
       ? Math.min(
           1,
           ((MAX_MEAN_BRIGHTNESS - meanBrightness) / MAX_MEAN_BRIGHTNESS +
-            Math.min(darkFraction / 0.25, 1) +
-            (MAX_LIGHT_FRACTION - lightFraction) / MAX_LIGHT_FRACTION) /
-            3
+            Math.min(darkFraction / 0.25, 1)) /
+            2
         )
       : 0;
 

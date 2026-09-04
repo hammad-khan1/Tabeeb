@@ -151,5 +151,13 @@ export function buildImagingNote(result: ClassificationResult): string {
   const list = result.flagged
     .map((s) => `${s.pathology.toLowerCase()} (${Math.round(s.probability * 100)}%)`)
     .join(', ');
-  return `The automated screening model flagged: ${list}. ${DISCLAIMER}`;
+
+  // Many scores bunched near the operating point. That happens both when the model is
+  // unsure and when a chest genuinely shows widespread changes, so it is reported as a
+  // caveat rather than used to hide the result.
+  const spread = result.lowConfidenceSpread
+    ? ' Several of these sit close together near the model’s decision threshold, so treat the ordering as weak.'
+    : '';
+
+  return `The automated screening model flagged: ${list}.${spread} ${DISCLAIMER}`;
 }

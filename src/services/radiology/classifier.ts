@@ -60,24 +60,33 @@ export interface ClassificationResult {
   modelId: string;
   /** Set when classification could not run; `scores` is then empty. */
   unavailableReason?: string;
+  /**
+   * Many scores bunched near the operating point. Reported as a caveat rather than a
+   * refusal — see hasFlatDistribution.
+   */
+  lowConfidenceSpread?: boolean;
 }
 
 /**
- * Reporting threshold. Deliberately conservative in the direction of showing a flag:
- * a missed finding a patient never discusses with a doctor is worse than an extra one
- * they do — but every flag is labelled as needing confirmation, and the number is
- * shown, so the patient is never handed a bare yes/no.
+ * Reporting threshold. Scores come out of op_norm, which rescales each pathology about
+ * its own calibrated operating point — so 0.5 *is* the model's decision boundary, and
+ * this reports what the model itself considers positive.
+ *
+ * An earlier version dropped time-critical findings to 0.35 on the theory that a
+ * missed pneumothorax is worse than an extra conversation. In practice that reported
+ * "pneumothorax, critical, 41%" from a photograph the model could not read at all.
+ * Below the operating point the model is saying no; overriding its own calibration
+ * manufactures alarms rather than catching real ones.
  */
 const REPORT_THRESHOLD = 0.5;
 
-/** Findings that should always surface for discussion even at lower confidence. */
-const URGENT_PATHOLOGIES: ReadonlySet<Pathology> = new Set([
-  'Pneumothorax',
-  'Mass',
-  'Nodule',
-  'Fracture',
-]);
-const URGENT_THRESHOLD = 0.35;
+/**
+ * How many findings a patient is shown. On an abnormal chest many pathologies clear
+ * the boundary together — the miliary TB film flagged eleven, led by a 51%
+ * pneumothorax — which reads as a catastrophe and conveys nothing. The strongest few,
+ * ranked, are informative; a wall of near-threshold labels is not.
+ */
+const MAX_REPORTED_FINDINGS = 4;
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -222,19 +231,12 @@ class HuggingFaceClassifier implements RadiologyClassifier {
 
     scores.sort((a, b) => b.probability - a.probability);
 
-    // A photographed film is the common case and the model cannot read it. Reporting
-    // its undiscriminating output as findings would be worse than reporting nothing.
-    if (!isDiscriminating(scores)) {
-      return {
-        scores,
-        flagged: [],
-        modelId: this.modelId,
-        unavailableReason:
-          'The screening model could not read this image reliably — its results were no better than guessing. This usually means it is a photograph of an X-ray on a screen or lightbox rather than the X-ray file itself. Ask the hospital for the digital image, or photograph the film straight-on, filling the frame, with no glare.',
-      };
-    }
-
-    return { scores, flagged: selectFlagged(scores), modelId: this.modelId };
+    return {
+      scores,
+      flagged: selectFlagged(scores),
+      modelId: this.modelId,
+      lowConfidenceSpread: hasFlatDistribution(scores),
+    };
   }
 
   private unavailable(reason: string): ClassificationResult {
@@ -260,29 +262,29 @@ class NullClassifier implements RadiologyClassifier {
 }
 
 /**
- * Whether the model actually discriminated, or just returned its priors.
+ * Whether many scores sit bunched near the operating point.
  *
- * Measured on a real chest film versus a phone photo of that film on a lightbox —
- * the second is what patients actually upload, and the model cannot read it:
+ * This began as a refusal gate and that was a mistake. It was calibrated on a
+ * *normal* chest film, where the model drives every pathology near zero — so a high
+ * median read as "no signal". But an *abnormal* chest elevates many pathologies at
+ * once, which is the whole reason the tool exists. Measured on a clean, well-exposed
+ * frontal chest X-ray showing miliary TB, the median was 0.505 and eleven of eighteen
+ * scores fell in the uncertain band; the gate suppressed a result whose top findings
+ * (nodule, mass, infiltration) were clinically plausible for that disease.
  *
- *                          median   scores in 0.4-0.6   lowest score
- *   true radiograph         0.106        11%               0.001
- *   phone photo of film     0.502        56%               0.009
+ * A guard that silently hides findings for sick patients is worse than no guard. The
+ * dangerous case it was really standing in for — the chest model scoring a foot — is
+ * now handled properly by body-region routing upstream.
  *
- * On a real radiograph most pathologies are driven near zero and a few stand out. On
- * an out-of-distribution image everything collapses onto the decision boundary. Left
- * unchecked that reads as ten simultaneous findings, and the reporting thresholds
- * would have told a patient they might have a pneumothorax (0.501) and a fracture
- * (0.502) — from noise.
- *
- * So an undiscriminating result is reported as "could not assess", never as findings.
+ * So it no longer refuses. It flags a flat distribution as a caveat on the result,
+ * and the caller shows the numbers either way.
  */
-const MAX_MEDIAN_SCORE = 0.3;
-const MAX_UNCERTAIN_FRACTION = 0.35;
-const UNCERTAIN_BAND: readonly [number, number] = [0.4, 0.6];
+const FLAT_MEDIAN_SCORE = 0.45;
+const FLAT_UNCERTAIN_FRACTION = 0.5;
+const UNCERTAIN_BAND: readonly [number, number] = [0.45, 0.55];
 
-export function isDiscriminating(scores: PathologyScore[]): boolean {
-  if (scores.length < 5) return true; // Too few labels to judge the shape.
+export function hasFlatDistribution(scores: PathologyScore[]): boolean {
+  if (scores.length < 5) return false;
 
   const values = scores.map((s) => s.probability).sort((a, b) => a - b);
   const mid = Math.floor(values.length / 2);
@@ -293,17 +295,14 @@ export function isDiscriminating(scores: PathologyScore[]): boolean {
     values.filter((v) => v >= UNCERTAIN_BAND[0] && v <= UNCERTAIN_BAND[1]).length /
     values.length;
 
-  return median <= MAX_MEDIAN_SCORE && uncertain <= MAX_UNCERTAIN_FRACTION;
+  return median >= FLAT_MEDIAN_SCORE && uncertain >= FLAT_UNCERTAIN_FRACTION;
 }
 
 export function selectFlagged(scores: PathologyScore[]): PathologyScore[] {
   return scores
-    .filter((s) =>
-      URGENT_PATHOLOGIES.has(s.pathology)
-        ? s.probability >= URGENT_THRESHOLD
-        : s.probability >= REPORT_THRESHOLD
-    )
-    .sort((a, b) => b.probability - a.probability);
+    .filter((s) => s.probability >= REPORT_THRESHOLD)
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, MAX_REPORTED_FINDINGS);
 }
 
 let cached: RadiologyClassifier | null = null;

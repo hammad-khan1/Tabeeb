@@ -34,10 +34,13 @@ export type BodyRegion =
   | 'skull'
   | 'pelvis'
   | 'other'
+  /** The image is not a radiograph at all — a photographed document, say. */
+  | 'not an x-ray'
   | 'unknown';
 
 const BODY_REGIONS: readonly BodyRegion[] = [
   'chest', 'abdomen', 'spine', 'upper limb', 'lower limb', 'skull', 'pelvis', 'other',
+  'not an x-ray',
 ];
 
 export interface RadiographDescription {
@@ -74,9 +77,10 @@ Hard rules:
 - Keep it under 200 words.
 
 Begin your reply with a single line of exactly this form, then a blank line, then the description:
-REGION: <one of: chest, abdomen, spine, upper limb, lower limb, skull, pelvis, other>
+REGION: <one of: chest, abdomen, spine, upper limb, lower limb, skull, pelvis, other, not an x-ray>
 
-If you cannot tell which part of the body it is, write "REGION: other".`;
+If the image is not a radiograph at all — a photograph of a paper document, a prescription, a screenshot — write "REGION: not an x-ray" and say so in one sentence instead of describing anatomy.
+If it is an X-ray but you cannot tell which part of the body it is, write "REGION: other".`;
 
 /**
  * Reassurance the model emits despite being told not to.
