@@ -54,16 +54,25 @@ HF_API_KEY=any-non-empty-value
 
 ## Deploying free
 
-Any host that runs a container works. In rough order of least friction:
+`deploy_space.py` publishes this to a HuggingFace Space on the free CPU tier.
+Spaces builds the image remotely, so no local Docker is needed.
 
-**HuggingFace Spaces (Docker SDK)** — free CPU tier, no card required. Create a Space,
-push `app.py`, `requirements.txt` and a `Dockerfile`, and set `AUTH_TOKEN` as a Space
-secret. Idle Spaces sleep and take 30–60s to wake; Tabeeb's client retries a cold
-start with a long timeout, so this is workable.
+```bash
+HF_TOKEN=hf_xxx ./.venv/bin/python deploy_space.py
+```
 
-**Fly.io / Render** — free allowances, same sleep behaviour.
+The token needs *write* permission, from https://huggingface.co/settings/tokens.
+The script creates the Space **private** — it processes patients' X-rays and should
+not be an endpoint anyone can post to — generates an `AUTH_TOKEN` secret, uploads
+`space/`, and prints the two values to put in Tabeeb's `.env.local`.
 
-**A small VPS** — no sleeping, roughly $5/month, simplest to reason about.
+The first build takes several minutes because the Dockerfile bakes the model weights
+into the image, so the first real request is not a slow download. Idle Spaces sleep
+and take 30–60s to wake; Tabeeb's client retries a cold start with a long timeout,
+so this is workable.
+
+Alternatives with the same trade-offs: **Fly.io** and **Render** free allowances, or
+a small VPS (~$5/month) if the sleeping becomes annoying.
 
 ```dockerfile
 FROM python:3.11-slim
