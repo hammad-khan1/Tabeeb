@@ -309,24 +309,49 @@ export function selectFlagged(scores: PathologyScore[]): PathologyScore[] {
 let cached: RadiologyClassifier | null = null;
 
 /**
- * Resolves the configured classifier. Set RADIOLOGY_CLASSIFIER_URL to a HuggingFace
- * Inference Endpoint serving a chest X-ray multi-label model (TorchXRayVision's
- * densenet121-res224-all is the reference), plus HF_API_KEY. With neither set, the
- * app truthfully reports that no analysis was performed.
+ * Resolves the classifier backend, in order:
+ *
+ *  1. an explicit RADIOLOGY_CLASSIFIER_URL — a hosted endpoint wins when set, so a
+ *     deployment can override the bundled model without a code change;
+ *  2. the ONNX model bundled in models/, run in-process — no service to deploy, no
+ *     cold start, and the image never leaves the server;
+ *  3. nothing, in which case the app says the image was not analysed rather than
+ *     inventing findings.
+ *
+ * `onnxruntime-node` is a native module, so option 2 needs a VPS or container. On a
+ * runtime that cannot load native addons, set the URL and use option 1.
  */
-export function getRadiologyClassifier(): RadiologyClassifier {
+export async function resolveRadiologyClassifier(): Promise<RadiologyClassifier> {
   if (cached) return cached;
 
   const url = process.env.RADIOLOGY_CLASSIFIER_URL?.trim();
-  const modelId =
-    process.env.RADIOLOGY_CLASSIFIER_MODEL?.trim() ||
-    'torchxrayvision/densenet121-res224-all';
-
   if (url && huggingFaceApiKey()) {
+    const modelId =
+      process.env.RADIOLOGY_CLASSIFIER_MODEL?.trim() ||
+      'torchxrayvision/densenet121-res224-all';
     cached = new HuggingFaceClassifier(modelId, url);
-  } else {
-    cached = new NullClassifier();
+    return cached;
   }
+
+  if (process.env.RADIOLOGY_DISABLE_LOCAL_MODEL !== '1') {
+    try {
+      const { isOnnxModelAvailable, OnnxRadiologyClassifier } = await import(
+        './onnx-classifier'
+      );
+      if (await isOnnxModelAvailable()) {
+        cached = new OnnxRadiologyClassifier();
+        return cached;
+      }
+    } catch (error) {
+      // Native module missing or unloadable on this runtime — fall through and say so.
+      console.warn(
+        '[Radiology] local ONNX backend unavailable:',
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+
+  cached = new NullClassifier();
   return cached;
 }
 

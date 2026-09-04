@@ -35,6 +35,7 @@
     "mammoth": "^1.12.2",
     "nanoid": "^5.1.16",
     "next": "16.3.3",
+    "onnxruntime-node": "^1.29.0",
     "pdf-parse": "^2.4.5",
     "postgres": "^3.4.9",
     "react": "19.2.8",

@@ -5,7 +5,7 @@ import {
   enhanceForHandwriting,
   type NormalizedImage,
 } from './image-normalizer';
-import { getRadiologyClassifier, type ClassificationResult } from '@/services/radiology/classifier';
+import { resolveRadiologyClassifier, type ClassificationResult } from '@/services/radiology/classifier';
 import { detectRadiograph } from '@/services/radiology/detect-radiograph';
 import { buildFindings, type ValidatedFinding } from '@/services/radiology/validator';
 
@@ -229,10 +229,8 @@ async function classifyRadiologyImage(
   mimeType: string
 ): Promise<{ findings: ValidatedFinding[]; classification: ClassificationResult }> {
   const normalized = await normalizeForVision(buffer, mimeType);
-  const classification = await getRadiologyClassifier().classify(
-    normalized.buffer,
-    normalized.mimeType
-  );
+  const classifier = await resolveRadiologyClassifier();
+  const classification = await classifier.classify(normalized.buffer, normalized.mimeType);
   return { findings: buildFindings(classification), classification };
 }
 
