@@ -17,6 +17,8 @@ export interface ExtractionResult {
   detectedAsRadiograph?: boolean;
   /** Plain-language account of the image, for body parts the classifier cannot score. */
   radiographDescription?: RadiographDescription;
+  /** Set when the radiograph is too small for the models to read reliably. */
+  lowResolution?: { width: number; height: number };
 }
 
 /** Dispatch is driven by the same map the uploader validates against, so the two cannot drift. */
@@ -113,6 +115,7 @@ export async function extractText(
       classification: result.classification,
       detectedAsRadiograph: result.detectedAsRadiograph,
       radiographDescription: result.radiographDescription,
+      lowResolution: result.lowResolution,
     };
   }
 

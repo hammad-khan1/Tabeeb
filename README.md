@@ -262,6 +262,21 @@ catalogue, medical NER, reconciliation, drug/allergy interaction logic, X-ray
 finding construction, storage path handling, request validation, rate limiting,
 model-failure classification, and share-link scoping.
 
+## Image capture
+
+X-rays reach this app as photographs of films, not DICOM. That is workable — qXR, a
+cleared chest X-ray product, was evaluated on smartphone photographs of films against
+the digital originals (JMIR Formative Research 2024, n=1,278) and the difference in
+positive and negative agreement was not statistically significant. A photographed
+film is a legitimate input, provided it is photographed well.
+
+What breaks it is the delivery path. Every X-ray uploaded during development arrived
+via WhatsApp at 720px on the long edge — roughly a tenth of the pixels the phone's
+camera captured, and far below the 1440x1440 a cleared product requires. So the
+uploader offers a **Take Photo** control that opens the camera directly at full
+resolution, carries the capture protocol from that study, and the pipeline tells the
+patient when an X-ray is too small to read rather than analysing it silently.
+
 ## Deploying
 
 The app runs on any Node host. Two things must be settled before a real deploy:

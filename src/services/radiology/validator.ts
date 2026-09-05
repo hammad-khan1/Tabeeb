@@ -130,6 +130,27 @@ export function buildFindings(result: ClassificationResult): ValidatedFinding[] 
 }
 
 /**
+ * Capture guidance, from the protocol used in the study that validated qXR on
+ * smartphone photographs of films (JMIR Formative Research, 2024, n=1,278). Under it,
+ * photographs performed no worse than digital images to statistical significance — so
+ * a photographed film is a legitimate input, provided it is photographed well.
+ */
+export const CAPTURE_GUIDANCE =
+  'To get a better photo of an X-ray film: put the film on a lightbox in a dark room, ' +
+  'turn the phone flash off, hold the phone flat and parallel to the film rather than ' +
+  'at an angle, fill the frame with the film, and send the photo at full size — ' +
+  'sharing it through WhatsApp first shrinks it to about a tenth of the detail your ' +
+  'camera captured.';
+
+/** Told to a patient whose X-ray was too small for the models to read properly. */
+export function buildResolutionNote(width: number, height: number): string {
+  return (
+    `This image is ${width}×${height} pixels, which is small for an X-ray — there may ` +
+    `not be enough detail for the screening model to read it reliably. ${CAPTURE_GUIDANCE}`
+  );
+}
+
+/**
  * The note shown on an imaging document, covering both the "nothing flagged" and
  * "not analysed" cases explicitly — silence must never read as "your X-ray is clear".
  */

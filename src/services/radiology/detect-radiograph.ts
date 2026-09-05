@@ -44,8 +44,30 @@ export interface RadiographDetection {
     meanBrightness: number;
     darkFraction: number;
     lightFraction: number;
+    width: number;
+    height: number;
   };
+  /**
+   * Too few pixels for a screening model to read reliably. Not a reason to refuse the
+   * upload — the record still wants the image — but the patient should be told, since
+   * re-photographing is usually easy and doubles what any model can see.
+   */
+  belowUsefulResolution: boolean;
 }
+
+/**
+ * Resolution floor, in pixels on the shorter side.
+ *
+ * Qure.ai's qXR — a cleared chest X-ray product — requires 1440x1440 for DICOM input.
+ * That is the standard a clinical-grade reading is held to. Every X-ray uploaded to
+ * this app so far falls far below it, all at 720x1280 or smaller, because the images
+ * arrive via WhatsApp: it recompresses to 720 on the long edge, discarding roughly
+ * nine tenths of what the phone's camera actually captured (3024x4032).
+ *
+ * This threshold sits well under qXR's, at the point where the in-app models start
+ * losing detail rather than where a cleared product draws its line.
+ */
+const MIN_USEFUL_DIMENSION = 800;
 
 /** Below this an image is "mostly dark"; paper documents sit far above it. */
 const MAX_MEAN_BRIGHTNESS = 150;
@@ -67,10 +89,15 @@ export async function detectRadiograph(buffer: Buffer): Promise<RadiographDetect
   const fallback: RadiographDetection = {
     isRadiograph: false,
     confidence: 0,
-    stats: { meanBrightness: 0, darkFraction: 0, lightFraction: 0 },
+    stats: { meanBrightness: 0, darkFraction: 0, lightFraction: 0, width: 0, height: 0 },
+    belowUsefulResolution: false,
   };
 
   try {
+    const meta = await sharp(buffer).metadata();
+    const width = meta.width ?? 0;
+    const height = meta.height ?? 0;
+
     const pixels = await sharp(buffer)
       .greyscale()
       .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: 'fill' })
@@ -109,7 +136,9 @@ export async function detectRadiograph(buffer: Buffer): Promise<RadiographDetect
     return {
       isRadiograph,
       confidence,
-      stats: { meanBrightness, darkFraction, lightFraction },
+      stats: { meanBrightness, darkFraction, lightFraction, width, height },
+      belowUsefulResolution:
+        isRadiograph && Math.min(width, height) < MIN_USEFUL_DIMENSION,
     };
   } catch {
     // An unreadable image is handled downstream; detection failing must not fail

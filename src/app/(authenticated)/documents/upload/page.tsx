@@ -12,6 +12,7 @@ import {
   Mic,
   Square,
   AlertCircle,
+  Camera,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ function formatFileSize(bytes: number): string {
 export default function UploadPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const { uploadDocument } = useDocuments();
 
   const [file, setFile] = useState<File | null>(null);
@@ -281,6 +283,19 @@ export default function UploadPage() {
               >
                 Choose File
               </Button>
+              {/* `capture` opens the camera directly at full sensor resolution.
+                  It matters for X-rays: a film forwarded through WhatsApp arrives at
+                  720px on the long edge, roughly a tenth of what the camera shot, and
+                  the detail a screening model needs is gone before upload. */}
+              <Button
+                type="button"
+                className="mt-4 ms-2"
+                variant="outline"
+                onClick={() => cameraInputRef.current?.click()}
+              >
+                <Camera className="size-4" aria-hidden="true" />
+                Take Photo
+              </Button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -292,9 +307,37 @@ export default function UploadPage() {
                   e.target.value = "";
                 }}
               />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                className="hidden"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFile(f);
+                  e.target.value = "";
+                }}
+              />
               <p className="mt-4 text-xs text-muted-foreground">
                 Accepted: {SUPPORTED_FILE_TYPES_LABEL} (max {formatFileSize(MAX_FILE_SIZE)})
               </p>
+
+              <details className="mt-5 text-start mx-auto max-w-md">
+                <summary className="cursor-pointer text-xs font-medium text-primary">
+                  Photographing an X-ray film? Read this first
+                </summary>
+                <ol className="mt-2 space-y-1 ps-4 text-xs text-muted-foreground list-decimal">
+                  <li>Put the film on a lightbox, in a dark room.</li>
+                  <li>Turn the flash off — glare is what ruins most X-ray photos.</li>
+                  <li>Hold the phone flat and parallel to the film, not at an angle.</li>
+                  <li>Fill the frame with the film, edge to edge.</li>
+                  <li>
+                    Use <strong>Take Photo</strong> above rather than sending it through
+                    WhatsApp first — sharing shrinks it to about a tenth of the detail.
+                  </li>
+                </ol>
+              </details>
             </div>
           </CardContent>
         </Card>

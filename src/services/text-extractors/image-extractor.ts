@@ -27,6 +27,8 @@ export interface ImageExtractionResult {
   detectedAsRadiograph?: boolean;
   /** Plain-language account of the image, for body parts the classifier cannot score. */
   radiographDescription?: RadiographDescription;
+  /** Set when the radiograph is too small for the models to read reliably. */
+  lowResolution?: { width: number; height: number };
 }
 
 const VISION_MAX_TOKENS = 8192;
@@ -303,6 +305,12 @@ export async function extractFromImage(
       result.classification = classification;
       result.radiographDescription = description;
       result.detectedAsRadiograph = !filedAsImaging;
+      if (detection?.belowUsefulResolution) {
+        result.lowResolution = {
+          width: detection.stats.width,
+          height: detection.stats.height,
+        };
+      }
     }
   }
 

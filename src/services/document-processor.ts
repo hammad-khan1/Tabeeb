@@ -14,7 +14,7 @@ import { getStorage } from '@/lib/storage';
 import { getGroq, MODELS } from '@/lib/groq';
 import { embeddingProvider } from '@/lib/embeddings';
 import { extractText } from '@/services/text-extractors';
-import { buildImagingNote } from '@/services/radiology/validator';
+import { buildImagingNote, buildResolutionNote } from '@/services/radiology/validator';
 import { buildDescriptionNote } from '@/services/radiology/medgemma-describer';
 import {
   parseStructuredExtraction,
@@ -570,6 +570,9 @@ export async function processDocument(documentId: string, userId: string): Promi
       const imageNotes = [
         buildDescriptionNote(extraction.radiographDescription!) ?? '',
         extraction.classification ? buildImagingNote(extraction.classification) : '',
+        extraction.lowResolution
+          ? buildResolutionNote(extraction.lowResolution.width, extraction.lowResolution.height)
+          : '',
       ].filter(Boolean);
 
       const imagingRows = (extraction.radiologyFindings ?? []).map((f) => ({
@@ -686,6 +689,11 @@ export async function processDocument(documentId: string, userId: string): Promi
       : null;
 
     if (descriptionNote) notes.push(descriptionNote);
+    if (extraction.lowResolution) {
+      notes.push(
+        buildResolutionNote(extraction.lowResolution.width, extraction.lowResolution.height)
+      );
+    }
     if (extraction.classification && !(descriptionNote && extraction.classification.unavailableReason)) {
       notes.push(buildImagingNote(extraction.classification));
     }
