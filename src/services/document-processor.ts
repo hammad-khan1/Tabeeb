@@ -24,6 +24,7 @@ import {
   type ValidatedExtraction,
 } from '@/services/extraction-schema';
 import { reconcileExtraction } from '@/services/nlp/reconciler';
+import { belongsToPatient } from '@/services/nlp/assertion';
 import { canonicalizeLab } from '@/services/nlp/lab-normalizer';
 import { parseMedicalValue, isOutOfRange } from '@/lib/medical-values';
 import { generateDocumentSummary } from '@/services/summarizer';
@@ -325,10 +326,19 @@ function buildEntityRows(
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
+  // A condition the document denies, attributes to a relative, or raises as advice
+  // about what to do if it happens is not this patient's problem, and must never
+  // become a row in their record. The reconciler explains each one in the document's
+  // notes, and the full extraction is still stored as structured data, so nothing is
+  // hidden — it just does not become clinical history.
   const diagnosisRows = data.diagnoses
     .map((d) => {
       const condition = clamp(d.condition, 500);
       if (!condition) return null;
+
+      const assertionStatus = d.assertionStatus ?? 'present';
+      if (!belongsToPatient(assertionStatus)) return null;
+
       return {
         documentId,
         userId,
@@ -336,6 +346,7 @@ function buildEntityRows(
         icd10Code: clamp(d.icd10Code, 50),
         severity: clamp(d.severity, 100),
         notes: d.notes ?? null,
+        assertionStatus,
         diagnosedDate: safeDate(d.diagnosedDate),
       };
     })
@@ -379,6 +390,12 @@ function buildEntityRows(
     .map((a) => {
       const allergen = clamp(a.allergen, 500);
       if (!allergen) return null;
+
+      // "No known drug allergies" is on virtually every discharge summary, and reading
+      // it as an allergy to drugs is the inverse of a safety feature.
+      const assertionStatus = a.assertionStatus ?? 'present';
+      if (!belongsToPatient(assertionStatus)) return null;
+
       return {
         documentId,
         userId,
@@ -386,6 +403,7 @@ function buildEntityRows(
         allergyType: clamp(a.allergyType, 100),
         severity: clamp(a.severity, 100),
         reaction: a.reaction ?? null,
+        assertionStatus,
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);

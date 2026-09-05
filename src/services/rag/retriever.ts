@@ -2,6 +2,8 @@ import { sql, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { embeddingProvider } from '@/lib/embeddings';
 import { documents } from '../../../drizzle/schema';
+import { expandQuery } from './query-expander';
+import { scoreOverlap } from './reranker';
 
 /**
  * Hybrid retrieval.
@@ -18,6 +20,12 @@ import { documents } from '../../../drizzle/schema';
  * On relevance floors, see MIN_SIMILARITY below: measurement showed a single cosine
  * threshold cannot separate relevant from irrelevant with this embedding model, so the
  * floor is a guard rather than a classifier.
+ *
+ * Two NLP steps wrap the lexical arm. The query is expanded into the vocabulary the
+ * documents are likely to use before it is searched — "sugar" also searches HbA1c and
+ * glucose, an Urdu question also searches its English terms — and the fused candidates
+ * are then reranked on how much of that vocabulary each chunk actually contains, since
+ * rank fusion by itself never looks at the text it is ranking.
  */
 
 export interface RetrievedChunk {
@@ -30,6 +38,8 @@ export interface RetrievedChunk {
   relevanceScore: number;
   /** Which arm(s) surfaced this chunk — useful for debugging retrieval quality. */
   matchedBy: Array<'dense' | 'lexical'>;
+  /** Query terms (expanded included) this chunk contains. */
+  matchedTerms: string[];
 }
 
 interface RetrieverOptions {
@@ -74,10 +84,16 @@ const RECENCY_DECAY_DAYS = 365 * 3;
 /** Standard RRF damping; keeps any single arm from dominating on rank alone. */
 const RRF_K = 60;
 
-/** Weights the fused rank score against recency and section match. */
-const WEIGHT_FUSION = 0.75;
-const WEIGHT_RECENCY = 0.15;
-const WEIGHT_SECTION = 0.1;
+/**
+ * Weights the fused rank score against term coverage, recency and section match.
+ *
+ * Fusion still leads: it is the only signal that knows what the embedding model
+ * thought. Coverage is second because it is the only one that reads the chunk.
+ */
+const WEIGHT_FUSION = 0.6;
+const WEIGHT_OVERLAP = 0.2;
+const WEIGHT_RECENCY = 0.12;
+const WEIGHT_SECTION = 0.08;
 
 interface CandidateRow {
   chunk_id: string;
@@ -215,9 +231,14 @@ export async function retrieveRelevantChunks(
   // Both arms run together; a failure in either degrades to the other rather than
   // failing the question. The lexical arm in particular must not take down chat if
   // the tsvector index is missing on an un-migrated database.
+  // The expansion is for the lexical arm only: the dense arm embeds what the patient
+  // wrote, and padding that text with synonyms would move the vector away from the
+  // question they actually asked.
+  const expanded = expandQuery(trimmed);
+
   const [denseResult, lexicalResult] = await Promise.allSettled([
     denseCandidates(userId, trimmed),
-    lexicalCandidates(userId, trimmed),
+    lexicalCandidates(userId, expanded.lexicalQuery),
   ]);
 
   if (denseResult.status === 'rejected' && lexicalResult.status === 'rejected') {
@@ -280,8 +301,11 @@ export async function retrieveRelevantChunks(
     const clinicalDate = doc?.documentDate ?? doc?.createdAt ?? null;
     const section = entry.row.section ?? 'General';
 
+    const overlap = scoreOverlap(expanded.terms, entry.row.content);
+
     const relevanceScore =
       WEIGHT_FUSION * (entry.rrf / bestRrf) +
+      WEIGHT_OVERLAP * overlap.coverage +
       WEIGHT_RECENCY * computeRecencyScore(clinicalDate) +
       WEIGHT_SECTION * computeSectionScore(section, options?.sectionFilter);
 
@@ -294,6 +318,7 @@ export async function retrieveRelevantChunks(
       section,
       relevanceScore,
       matchedBy: [...new Set(entry.matchedBy)],
+      matchedTerms: overlap.matched,
     };
   });
 

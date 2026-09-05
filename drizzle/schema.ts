@@ -104,6 +104,10 @@ export const diagnoses = pgTable('diagnoses', {
   icd10Code: varchar('icd10_code', { length: 50 }),
   severity: varchar('severity', { length: 100 }),
   notes: text('notes'),
+  // How the source document asserts this condition — see services/nlp/assertion.
+  // Only findings the document attributes to the patient are written at all, so this
+  // separates a current problem from one recorded as past or suspected.
+  assertionStatus: varchar('assertion_status', { length: 20 }).default('present'),
   diagnosedDate: timestamp('diagnosed_date'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
@@ -141,6 +145,7 @@ export const allergies = pgTable('allergies', {
   allergyType: varchar('allergy_type', { length: 100 }),
   severity: varchar('severity', { length: 100 }),
   reaction: text('reaction'),
+  assertionStatus: varchar('assertion_status', { length: 20 }).default('present'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('allergies_user_id_idx').on(table.userId),

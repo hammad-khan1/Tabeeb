@@ -15,6 +15,13 @@
       "when": 1788463876426,
       "tag": "0001_lexical_english",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788463876427,
+      "tag": "0002_assertion_status",
+      "breakpoints": true
     }
   ]
 }

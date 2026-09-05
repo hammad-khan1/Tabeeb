@@ -28,7 +28,10 @@ Built with **Next.js 16 (App Router)**, **TypeScript**, **Drizzle ORM + PostgreS
 
 - **Document ingestion** — upload PDFs, images (JPEG/PNG/HEIC/WebP/TIFF), DOCX or text files. Text is extracted via native parsing or vision-model OCR (with handwriting detection), then an LLM extracts structured medical entities (medications, diagnoses, labs, allergies, imaging findings).
 - **Reconciliation & safety net** — extracted data is cross-checked against an independent medical NER pass and RxNorm-based drug-name normalization before being trusted; low-confidence or unverified findings are surfaced for user review rather than silently inserted.
-- **Health memory (RAG chat)** — every document is chunked and embedded (multilingual E5, via Pinecone's embedding API) into pgvector; a chat endpoint retrieves relevant chunks plus the user's active medication/allergy/condition profile to answer questions with cited sources.
+- **Assertion detection** — before anything is written to the record, each condition and allergy is classified by how the document asserts it: stated, denied, a relative's, past history, conditional advice, or a hedge. "No history of diabetes", "family history of diabetes" and "diabetic since 2019" produce the same entity from an extractor, so without this pass a record can state the opposite of the document it came from. Findings the document does not attribute to the patient are kept out of the record and explained in the document's notes. Cues cover English, Urdu and Roman Urdu.
+- **Concept linking** — conditions are matched to a curated ICD-10 catalogue (with local-language aliases) so "T2DM", "DM type II", "diabetes mellitus" and "شوگر" collapse to one concept with one code instead of reading as four diseases; labs already link to LOINC the same way, and drugs to RxNorm.
+- **Urdu / Roman-Urdu NLP** — a deterministic layer underneath the rest: script detection, Urdu normalisation (diacritics, Arabic-vs-Urdu letterforms, eastern digits), phonetic keys that fold Roman-Urdu spelling variance (khansi/khaansi), and a curated local medical lexicon mapped to English clinical terms.
+- **Health memory (RAG chat)** — every document is chunked and embedded (multilingual E5, via Pinecone's embedding API) into pgvector; a chat endpoint retrieves relevant chunks plus the user's active medication/allergy/condition profile to answer questions with cited sources. Before the lexical arm runs, the query is expanded into the vocabulary the documents actually use — "sugar" also searches HbA1c and glucose, an Urdu question also searches its English terms — and the fused candidates are reranked on how much of that vocabulary each chunk contains, since rank fusion alone never reads the text it ranks. The dense arm always embeds the patient's own wording.
 - **Interaction checking** — compares a queried medicine against the user's own record: shared active ingredient and shared ATC therapeutic class (both from RxNorm/RxClass), plus allergy matching that also covers the drug's class, so a penicillin allergy flags amoxicillin. **Pairwise drug–drug interaction screening is not included** — NLM retired its free Drug Interaction API in January 2024 and there is no free replacement, so the app states that limitation rather than letting a model invent interactions.
 - **Lab trend analysis** — parses lab results over time, detects direction (rising/falling/stable/fluctuating) and anomalies relative to reference ranges.
 - **Health insights digest** — periodically reviews a user's documents and generates a prioritized digest of findings.
@@ -51,6 +54,9 @@ Upload (PDF/Image/DOCX/Voice)
         ▼
  Reconciliation ──► medical-ner (independent NER) + drug-normalizer (RxNav) cross-check
         │
+        ▼
+ Clinical context ──► assertion (negated / family / historical / hypothetical) + condition-linker (ICD-10)
+        │            findings the document does not attribute to the patient stop here
         ▼
  Persistence (Postgres via Drizzle) ──► documents, medications, diagnoses, labResults, allergies, imagingFindings
         │
@@ -154,9 +160,11 @@ Tabeeb/
     │   ├── history/{summarizer.ts, share.ts}
     │   ├── insights/digest-generator.ts
     │   ├── interactions/{checker.ts, rxnav-client.ts}
-    │   ├── nlp/{medical-ner.ts, drug-normalizer.ts, reconciler.ts} (+ .test.ts)
+    │   ├── nlp/{medical-ner.ts, drug-normalizer.ts, lab-normalizer.ts, reconciler.ts,
+    │   │        urdu.ts, assertion.ts, condition-linker.ts} (+ .test.ts)
     │   ├── radiology/validator.ts
-    │   ├── rag/{retriever.ts, prompt-builder.ts, answer-streamer.ts}
+    │   ├── rag/{retriever.ts, query-rewriter.ts, query-expander.ts, reranker.ts,
+    │   │        prompt-builder.ts, answer-streamer.ts}
     │   ├── text-extractors/{pdf-extractor.ts, image-extractor.ts, image-normalizer.ts, docx-extractor.ts, index.ts}
     │   ├── trends/{analyzer.ts, lab-parser.ts} (+ .test.ts)
     │   └── voice/{transcriber.ts, structurer.ts}
@@ -246,7 +254,8 @@ Migrations are checked in under `drizzle/migrations`. `0000_init.sql` creates th
 `vector` and `pg_trgm` extensions and, at the end, the four retrieval indexes
 Drizzle's schema DSL cannot express (HNSW over embeddings, a `tsvector` GIN index,
 two trigram indexes); `0001` rebuilds the text index with the `english`
-configuration. If you regenerate migrations, carry those statements forward.
+configuration; `0002` adds `assertion_status` to `diagnoses` and `allergies`. If you
+regenerate migrations, carry those statements forward.
 
 Tests (179) cover the clinical value and reference-range parsing, the lab analyte
 catalogue, medical NER, reconciliation, drug/allergy interaction logic, X-ray
@@ -311,10 +320,16 @@ Clerk `clerkMiddleware` — protects `/dashboard`, `/documents`, `/chat`, `/hist
 - **`nlp/`**
   - `medical-ner.ts` — a second, independent entity-recognition pass (deterministic pattern matcher always on; optional Hugging Face `d4data/biomedical-ner-all` backend) used to catch entities the LLM extractor missed.
   - `drug-normalizer.ts` — matches OCR'd/misspelled drug names to canonical RxNorm concepts via RxNav's `approximateTerm`.
-  - `reconciler.ts` — cross-checks LLM extraction against NER + RxNorm; auto-corrects drug spelling but only *reports* (never silently inserts) entities the LLM missed.
+  - `lab-normalizer.ts` — canonicalises lab names, values and units against a curated analyte catalogue carrying LOINC codes.
+  - `urdu.ts` — script detection, Urdu normalisation, Roman-Urdu phonetic keys, and a curated Urdu/Roman-Urdu medical lexicon mapped to English clinical terms. Shared by the assertion detector, the condition linker and query expansion.
+  - `assertion.ts` — ConText/NegEx-style classifier deciding whether the document asserts a finding of the patient (`present`), denies it (`absent`), attributes it to a relative (`family`), places it in the past (`historical`), conditions it (`hypothetical`) or hedges it (`uncertain`). Cue lexicons in English, Urdu and Roman Urdu, with scope bounded by clause-termination cues. A term the text does not literally contain defaults to `present`, so rewording never deletes a real diagnosis.
+  - `condition-linker.ts` — curated ICD-10 catalogue with English abbreviations and local-language aliases; resolves a written condition to one concept, and only codes confident matches (a partial match is reported but never written as a code).
+  - `reconciler.ts` — cross-checks LLM extraction against NER + RxNorm, then runs assertion detection and concept linking over conditions and allergies; auto-corrects drug spelling but only *reports* (never silently inserts) entities the LLM missed, and explains every finding it holds back.
 - **`radiology/validator.ts`** — flags imaging findings against a curated urgent-findings list and assigns an urgency level (`routine`/`follow-up`/`urgent`/`critical`).
 - **`rag/`**
-  - `retriever.ts` — vector-similarity search over `document_chunks` for a user's query.
+  - `retriever.ts` — hybrid dense + lexical search over `document_chunks`, fused with reciprocal rank fusion and scored against term coverage, recency and section match.
+  - `query-expander.ts` — expands the query into clinical vocabulary (shorthand, synonyms, Urdu→English, catalogue condition names) for the lexical arm only; never replaces the patient's own words and never throws.
+  - `reranker.ts` — term-coverage scoring of each candidate chunk against the expanded query, weighted towards rare terms and exact numbers. The cheap stand-in for a cross-encoder, which is not an option on a request that must answer in seconds.
   - `prompt-builder.ts` — assembles the chat prompt from retrieved chunks + the user's medication/allergy/condition profile + imaging findings.
   - `answer-streamer.ts` — streams the chat completion from Groq (temperature 0, deterministic seed).
 - **`interactions/`**

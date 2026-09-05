@@ -129,3 +129,81 @@ describe('reconcileExtraction', () => {
     expect(result.missedEntities.map((e) => e.text)).toEqual(['hypertension']);
   });
 });
+
+describe('clinical context', () => {
+  it('marks a denied condition so it never reaches the health record', async () => {
+    const extraction = parseStructuredExtraction({
+      diagnoses: [{ condition: 'diabetes' }],
+    });
+    extractMedicalEntities.mockResolvedValue([]);
+
+    const result = await reconcileExtraction('No history of diabetes.', extraction);
+
+    expect(result.extraction.diagnoses[0].assertionStatus).toBe('absent');
+    expect(result.heldBack.map((a) => a.term)).toEqual(['diabetes']);
+    expect(result.notes.join(' ')).toContain('do not have it');
+  });
+
+  it('keeps a condition the document states plainly', async () => {
+    const extraction = parseStructuredExtraction({
+      diagnoses: [{ condition: 'hypertension' }],
+    });
+    extractMedicalEntities.mockResolvedValue([]);
+
+    const result = await reconcileExtraction(
+      'Patient has hypertension, on amlodipine.',
+      extraction
+    );
+
+    expect(result.extraction.diagnoses[0].assertionStatus).toBe('present');
+    expect(result.heldBack).toEqual([]);
+  });
+
+  it('attributes a relative’s condition to the family', async () => {
+    const extraction = parseStructuredExtraction({
+      diagnoses: [{ condition: 'asthma' }],
+    });
+    extractMedicalEntities.mockResolvedValue([]);
+
+    const result = await reconcileExtraction('Family history of asthma.', extraction);
+
+    expect(result.extraction.diagnoses[0].assertionStatus).toBe('family');
+  });
+
+  it('does not read "no known drug allergies" as an allergy', async () => {
+    const extraction = parseStructuredExtraction({
+      allergies: [{ allergen: 'drug' }],
+    });
+    extractMedicalEntities.mockResolvedValue([]);
+
+    const result = await reconcileExtraction('No known drug allergies.', extraction);
+
+    expect(result.extraction.allergies[0].assertionStatus).toBe('absent');
+  });
+
+  it('fills in an ICD-10 code the document did not print', async () => {
+    const extraction = parseStructuredExtraction({
+      diagnoses: [{ condition: 'T2DM' }, { condition: 'CKD', icd10Code: 'N18.3' }],
+    });
+    extractMedicalEntities.mockResolvedValue([]);
+
+    const result = await reconcileExtraction('Known case of T2DM and CKD.', extraction);
+
+    expect(result.extraction.diagnoses[0].icd10Code).toBe('E11.9');
+    // A code the document printed itself is never overwritten.
+    expect(result.extraction.diagnoses[1].icd10Code).toBe('N18.3');
+    expect(result.linkedConditionCount).toBe(1);
+  });
+
+  it('leaves an uncatalogued condition uncoded rather than guessing', async () => {
+    const extraction = parseStructuredExtraction({
+      diagnoses: [{ condition: 'Ehlers-Danlos syndrome' }],
+    });
+    extractMedicalEntities.mockResolvedValue([]);
+
+    const result = await reconcileExtraction('Diagnosed with Ehlers-Danlos syndrome.', extraction);
+
+    expect(result.extraction.diagnoses[0].icd10Code).toBeUndefined();
+    expect(result.linkedConditionCount).toBe(0);
+  });
+});
