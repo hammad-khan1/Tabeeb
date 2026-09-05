@@ -67,7 +67,13 @@ describe('suggestIcd10', () => {
 describe('canonicalConditionName', () => {
   it('groups records written differently under one name', () => {
     expect(canonicalConditionName('t2dm')).toBe('Type 2 diabetes mellitus');
-    expect(canonicalConditionName('sugar ki bimari')).toBe('sugar ki bimari');
+    // Roman Urdu now collapses with the Urdu and English spellings. It previously
+    // returned itself: "dama" and "sugar ki bimari" were in the lexicon but their
+    // phonetic skeletons fell under the minimum length, so they never resolved.
+    expect(canonicalConditionName('sugar ki bimari')).toBe('Type 2 diabetes mellitus');
+    expect(canonicalConditionName('shugar')).toBe('Type 2 diabetes mellitus');
+    expect(canonicalConditionName('dama')).toBe('Asthma');
+    expect(canonicalConditionName('tibi')).toBe('Pulmonary tuberculosis');
   });
 
   it('links a batch and dedupes repeated inputs', () => {

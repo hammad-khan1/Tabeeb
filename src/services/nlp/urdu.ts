@@ -182,11 +182,14 @@ function phraseKey(phrase: string): string {
  */
 export const MEDICAL_LEXICON: MedicalTerm[] = [
   // Conditions
-  { english: 'diabetes', kind: 'condition', urdu: ['شوگر', 'ذیابیطس'], roman: ['shugar', 'ziabetes'] },
-  { english: 'hypertension', kind: 'condition', urdu: ['بلڈ پریشر', 'فشار خون'], roman: ['blood pressure'] },
-  { english: 'asthma', kind: 'condition', urdu: ['دمہ'], roman: ['dama'] },
-  { english: 'tuberculosis', kind: 'condition', urdu: ['ٹی بی', 'تپ دق'], roman: ['tapedik'] },
-  { english: 'jaundice', kind: 'condition', urdu: ['یرقان', 'پیلیا'], roman: ['yarkan', 'pilia'] },
+  { english: 'diabetes', kind: 'condition', urdu: ['شوگر', 'ذیابیطس', 'شوگر کی بیماری'], roman: ['shugar', 'ziabetes', 'sugar ki bimari', 'shugar ki bimari', 'sugar ki bimaari'] },
+  { english: 'hypertension', kind: 'condition', urdu: ['بلڈ پریشر', 'فشار خون', 'بلند فشار خون', 'ہائی بلڈ پریشر'], roman: ['blood pressure', 'high blood pressure', 'balandh fishar khoon'] },
+  // 'bp' is deliberately absent: in real documents it is nearly always the measurement
+  // ("BP 130/85"), not a diagnosis, and mapping it to hypertension would read a routine
+  // vital sign as a condition. Same trap as 'dm' resolving to asthma.
+  { english: 'asthma', kind: 'condition', urdu: ['دمہ', 'سانس کی بیماری'], roman: ['dama', 'damma', 'saans ki bimari'] },
+  { english: 'tuberculosis', kind: 'condition', urdu: ['ٹی بی', 'تپ دق'], roman: ['tapedik', 'tibi', 'ti bi', 'tap e diq'] },
+  { english: 'jaundice', kind: 'condition', urdu: ['یرقان', 'پیلیا'], roman: ['yarkan', 'yarqan', 'pilia', 'peelia'] },
   { english: 'anemia', kind: 'condition', urdu: ['خون کی کمی'], roman: ['khoon ki kami'] },
   { english: 'malaria', kind: 'condition', urdu: ['ملیریا'], roman: ['malaria'] },
   { english: 'dengue', kind: 'condition', urdu: ['ڈینگی'], roman: ['dengue'] },
@@ -194,25 +197,25 @@ export const MEDICAL_LEXICON: MedicalTerm[] = [
   { english: 'hepatitis', kind: 'condition', urdu: ['ہیپاٹائٹس', 'کالا یرقان'], roman: ['hepatitis', 'kala yarkan'] },
   { english: 'allergy', kind: 'condition', urdu: ['الرجی', 'حساسیت'], roman: ['allergy'] },
   { english: 'infection', kind: 'condition', urdu: ['انفیکشن'], roman: ['infection'] },
-  { english: 'common cold', kind: 'condition', urdu: ['زکام', 'نزلہ'], roman: ['zukam', 'nazla'] },
-  { english: 'kidney stones', kind: 'condition', urdu: ['گردے کی پتھری'], roman: ['pathri'] },
-  { english: 'heart attack', kind: 'condition', urdu: ['دل کا دورہ'], roman: ['dil ka dora'] },
+  { english: 'common cold', kind: 'condition', urdu: ['زکام', 'نزلہ'], roman: ['zukam', 'zukaam', 'nazla', 'nazla zukam'] },
+  { english: 'kidney stones', kind: 'condition', urdu: ['گردے کی پتھری'], roman: ['pathri', 'gurde ki pathri'] },
+  { english: 'heart attack', kind: 'condition', urdu: ['دل کا دورہ'], roman: ['dil ka dora', 'dil ka daura', 'heart attack'] },
   { english: 'pregnancy', kind: 'condition', urdu: ['حمل'], roman: ['hamal'] },
   { english: 'obesity', kind: 'condition', urdu: ['موٹاپا'], roman: ['motapa'] },
 
   // Symptoms
-  { english: 'fever', kind: 'symptom', urdu: ['بخار'], roman: ['bukhar'] },
-  { english: 'cough', kind: 'symptom', urdu: ['کھانسی'], roman: ['khansi'] },
+  { english: 'fever', kind: 'symptom', urdu: ['بخار', 'تیز بخار'], roman: ['bukhar', 'bukhaar', 'tez bukhar'] },
+  { english: 'cough', kind: 'symptom', urdu: ['کھانسی'], roman: ['khansi', 'khaansi', 'khasi'] },
   { english: 'pain', kind: 'symptom', urdu: ['درد', 'تکلیف'], roman: ['dard', 'takleef'] },
   { english: 'headache', kind: 'symptom', urdu: ['سر درد', 'سردرد'], roman: ['sar dard'] },
   { english: 'abdominal pain', kind: 'symptom', urdu: ['پیٹ درد'], roman: ['pait dard'] },
   { english: 'chest pain', kind: 'symptom', urdu: ['سینے میں درد'], roman: ['seene mein dard'] },
   { english: 'shortness of breath', kind: 'symptom', urdu: ['سانس کی تکلیف'], roman: ['saans ki takleef'] },
-  { english: 'vomiting', kind: 'symptom', urdu: ['قے', 'الٹی'], roman: ['ulti'] },
-  { english: 'diarrhea', kind: 'symptom', urdu: ['دست', 'اسہال'], roman: ['ishaal'] },
+  { english: 'vomiting', kind: 'symptom', urdu: ['قے', 'الٹی'], roman: ['ulti', 'ultee', 'qai'] },
+  { english: 'diarrhea', kind: 'symptom', urdu: ['دست', 'اسہال'], roman: ['ishaal', 'dast', 'pait kharab'] },
   { english: 'constipation', kind: 'symptom', urdu: ['قبض'], roman: ['qabz'] },
-  { english: 'dizziness', kind: 'symptom', urdu: ['چکر'], roman: ['chakkar'] },
-  { english: 'weakness', kind: 'symptom', urdu: ['کمزوری', 'نقاہت'], roman: ['kamzori'] },
+  { english: 'dizziness', kind: 'symptom', urdu: ['چکر', 'سر چکرانا'], roman: ['chakkar', 'chakar'] },
+  { english: 'weakness', kind: 'symptom', urdu: ['کمزوری', 'نقاہت'], roman: ['kamzori', 'kamzoori', 'nikahat'] },
   { english: 'swelling', kind: 'symptom', urdu: ['سوجن', 'ورم'], roman: ['sojan'] },
   { english: 'itching', kind: 'symptom', urdu: ['خارش'], roman: ['kharish'] },
   { english: 'sputum', kind: 'symptom', urdu: ['بلغم'], roman: ['balgham'] },
@@ -265,13 +268,31 @@ const MAX_TERM_WORDS = Math.max(
 );
 
 /**
- * Roman keys shorter than this are dropped from the index: a two-character skeleton
- * collides with far too much ordinary English to be safe to match on.
+ * Roman keys shorter than this are dropped from the PHONETIC index: a two-character
+ * skeleton collides with far too much ordinary English to be safe to match on. The
+ * clearest case is "dama" (asthma), whose skeleton is "dm" — which is also how every
+ * document in the corpus abbreviates diabetes mellitus. Matching phonetically on two
+ * characters would resolve "DM type 2" to asthma.
  */
 const MIN_ROMAN_KEY_LENGTH = 3;
 
 const urduIndex = new Map<string, MedicalTerm>();
 const romanIndex = new Map<string, MedicalTerm>();
+
+/**
+ * Exact spellings, matched literally rather than phonetically.
+ *
+ * Short romanisations were being lost entirely: "dama" and "pilia" are both in the
+ * lexicon and neither resolved, because their skeletons fall under the phonetic
+ * minimum. Literal matching is safe at any length — "dama" only matches "dama" — so
+ * every spelling is indexed here, and the phonetic index stays restricted to terms
+ * long enough for a skeleton to be distinctive.
+ */
+const literalIndex = new Map<string, MedicalTerm>();
+
+function literalKey(phrase: string): string {
+  return phrase.trim().toLowerCase().replace(/\s+/g, ' ');
+}
 
 for (const term of MEDICAL_LEXICON) {
   for (const spelling of term.urdu) {
@@ -279,6 +300,9 @@ for (const term of MEDICAL_LEXICON) {
     if (key && !urduIndex.has(key)) urduIndex.set(key, term);
   }
   for (const spelling of term.roman) {
+    const literal = literalKey(spelling);
+    if (literal && !literalIndex.has(literal)) literalIndex.set(literal, term);
+
     const key = phraseKey(spelling);
     if (key.replace(/\s/g, '').length >= MIN_ROMAN_KEY_LENGTH && !romanIndex.has(key)) {
       romanIndex.set(key, term);
@@ -294,6 +318,11 @@ export function lookupMedicalTerm(phrase: string): MedicalTerm | null {
   if (containsUrduScript(trimmed)) {
     return urduIndex.get(normalizeUrdu(trimmed)) ?? null;
   }
+
+  // Exact spelling first — it is safe at any length. Phonetic matching then catches
+  // the spelling variance Roman Urdu is full of ("khansi", "khaansi", "khansee").
+  const literal = literalIndex.get(literalKey(trimmed));
+  if (literal) return literal;
 
   const key = phraseKey(trimmed);
   return key ? romanIndex.get(key) ?? null : null;

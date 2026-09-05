@@ -98,3 +98,47 @@ describe('toEnglishTerms', () => {
     expect(toEnglishTerms('شوگر شوگر')).toEqual(['diabetes']);
   });
 });
+
+describe('short Roman-Urdu spellings', () => {
+  // "dama" and "pilia" were both in the lexicon and neither resolved: their phonetic
+  // skeletons are "dm" and "pl", under the minimum length the phonetic index enforces.
+  // Exact spellings are now matched literally, which is safe at any length.
+  it.each([
+    ['dama', 'asthma'],
+    ['pilia', 'jaundice'],
+    ['tibi', 'tuberculosis'],
+  ])('resolves %s', (spelling, english) => {
+    expect(lookupMedicalTerm(spelling)?.english).toBe(english);
+  });
+
+  it('still refuses a two-letter skeleton that collides with an abbreviation', () => {
+    // "dama" keys to "dm", which is how every document abbreviates diabetes mellitus.
+    // Matching phonetically at that length would resolve "DM type 2" to asthma.
+    expect(lookupMedicalTerm('dm')).toBeNull();
+    expect(lookupMedicalTerm('DM')).toBeNull();
+    expect(lookupMedicalTerm('DM type 2')).toBeNull();
+  });
+
+  it('does not treat BP as a hypertension diagnosis', () => {
+    // In real documents "BP" is nearly always the measurement, not the condition.
+    expect(lookupMedicalTerm('bp')).toBeNull();
+    expect(lookupMedicalTerm('blood pressure')?.english).toBe('hypertension');
+  });
+
+  it('keeps phonetic matching for longer spellings', () => {
+    for (const spelling of ['khansi', 'khaansi', 'khansee']) {
+      expect(lookupMedicalTerm(spelling)?.english).toBe('cough');
+    }
+  });
+
+  it('resolves the multi-word phrasings patients type', () => {
+    expect(lookupMedicalTerm('sugar ki bimari')?.english).toBe('diabetes');
+    expect(lookupMedicalTerm('gurde ki pathri')?.english).toBe('kidney stones');
+    expect(lookupMedicalTerm('dil ka daura')?.english).toBe('heart attack');
+  });
+
+  it('resolves the Urdu spelling of hypertension that was missing', () => {
+    expect(lookupMedicalTerm('بلند فشار خون')?.english).toBe('hypertension');
+  });
+});
+
