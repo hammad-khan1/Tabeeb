@@ -108,3 +108,75 @@ describe('reporting', () => {
     expect(describeAssertion({ term: 'x', status: 'present', cue: null, evidence: '' })).toBeNull();
   });
 });
+
+describe('a relative as informant, not subject', () => {
+  // "Mother reports the patient has asthma" is the PATIENT's asthma. The bare relative
+  // cue read it as family history, and family findings are dropped from the record —
+  // so a real diagnosis vanished. Paediatric and geriatric notes read this way often.
+  it.each([
+    'Mother reports the patient has asthma.',
+    'Father says the patient has asthma.',
+    'The mother stated the patient has asthma.',
+    'Mother brought the patient with asthma.',
+    'Father complained the patient has asthma.',
+  ])('keeps the finding with the patient: %s', (text) => {
+    const result = detectAssertion(text, 'asthma');
+    expect(result.status).toBe('present');
+    expect(belongsToPatient(result.status)).toBe(true);
+  });
+
+  it.each([
+    ['Father had diabetes.', 'diabetes'],
+    ['Family history of hypertension.', 'hypertension'],
+    ['Mother and sister both have thyroid disease.', 'thyroid disease'],
+    ['Paternal uncle has tuberculosis.', 'tuberculosis'],
+  ])('still attributes a genuine family history: %s', (text, term) => {
+    expect(detectAssertion(text, term).status).toBe('family');
+  });
+});
+
+describe('a document that contradicts itself', () => {
+  // A plain mention used to override an explicit denial outright, because 'present'
+  // outranked everything — so a screening order beat the line saying the patient does
+  // not have the condition. That is the failure this module exists to prevent.
+  const CONTRADICTORY = 'No history of diabetes. Advised annual diabetes screening.';
+
+  it('does not let a bare mention override an explicit denial', () => {
+    expect(detectAssertion(CONTRADICTORY, 'diabetes').status).not.toBe('present');
+  });
+
+  it('resolves to uncertain rather than picking a side', () => {
+    expect(detectAssertion(CONTRADICTORY, 'diabetes').status).toBe('uncertain');
+  });
+
+  it('keeps the finding in the record rather than dropping it', () => {
+    // Discarding a condition the document states plainly is its own kind of harm.
+    expect(belongsToPatient(detectAssertion(CONTRADICTORY, 'diabetes').status)).toBe(true);
+  });
+
+  it('carries both sentences so the patient can see the conflict', () => {
+    const result = detectAssertion(CONTRADICTORY, 'diabetes');
+    expect(result.contradiction?.denied).toMatch(/No history of diabetes/i);
+    expect(result.contradiction?.asserted).toMatch(/screening/i);
+  });
+
+  it('tells the patient plainly, and points at the doctor', () => {
+    const note = describeAssertion(detectAssertion(CONTRADICTORY, 'diabetes'))!;
+    expect(note).toMatch(/written both ways/i);
+    expect(note).toMatch(/not as a confirmed finding/i);
+    expect(note).toMatch(/check with your doctor/i);
+  });
+
+  it('handles a denial followed by treatment for the same thing', () => {
+    const result = detectAssertion('No evidence of TB. Started on TB treatment.', 'TB');
+    expect(result.status).toBe('uncertain');
+    expect(result.contradiction).toBeDefined();
+  });
+
+  it('leaves an uncontradicted denial alone', () => {
+    const result = detectAssertion('No history of diabetes.', 'diabetes');
+    expect(result.status).toBe('absent');
+    expect(result.contradiction).toBeUndefined();
+  });
+});
+

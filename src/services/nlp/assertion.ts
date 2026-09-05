@@ -38,6 +38,12 @@ export interface Assertion {
   cue: string | null;
   /** The sentence the decision was made in. */
   evidence: string;
+  /**
+   * The document both denies and asserts this term. Resolved to 'uncertain' so the
+   * finding stays in the record but is not stated as fact, and the patient is shown
+   * both sentences.
+   */
+  contradiction?: { asserted: string; denied: string };
 }
 
 type CueType = Exclude<AssertionStatus, 'present'>;
@@ -81,10 +87,26 @@ const NEGATION_CUES: Cue[] = [
   { pattern: /\b(?:nahi|nahin|nahee|koi nahi)\b/g, type: 'absent', direction: 'backward' },
 ];
 
+/**
+ * Verbs that make a relative the *informant* rather than the subject. "Mother reports
+ * the patient has asthma" is the patient's asthma, described by the mother — but the
+ * bare relative cue read it as family history and the diagnosis was dropped from the
+ * record. Paediatric and geriatric notes are written this way constantly.
+ */
+const REPORTING_VERB =
+  '(?:reports?|reported|says?|said|states?|stated|brought|brings?|tells?|told|mentions?|mentioned|describes?|described|complains?|complained|confirms?|confirmed|notes?|noted)';
+
 /** Somebody else's condition. */
 const FAMILY_CUES: Cue[] = [
   { pattern: /\bfamily history(?: of)?\b/g, type: 'family', direction: 'forward' },
-  { pattern: /\b(?:mother|father|brother|sister|sibling|siblings|parents?|grand(?:mother|father)|maternal|paternal|uncle|aunt|cousin)\b/g, type: 'family', direction: 'forward' },
+  {
+    pattern: new RegExp(
+      `\\b(?:mother|father|brother|sister|sibling|siblings|parents?|grand(?:mother|father)|maternal|paternal|uncle|aunt|cousin)\\b(?!\\s+${REPORTING_VERB}\\b)`,
+      'g'
+    ),
+    type: 'family',
+    direction: 'forward',
+  },
   { pattern: /\bruns in the family\b/g, type: 'family', direction: 'backward' },
   { pattern: /(?:والد|والدہ|بھائی|بہن|خاندانی|خاندان میں|ماں|باپ)/g, type: 'family', direction: 'forward' },
   { pattern: /\b(?:walid|walida|bhai|behan|khandani|ammi|abbu)\b/g, type: 'family', direction: 'forward' },
@@ -370,8 +392,31 @@ export function detectAssertion(text: string, term: string): Assertion {
 
   if (found.length === 0) return { term, status: 'present', cue: null, evidence: '' };
 
-  // One unqualified mention is enough to call it present: a document that states the
-  // condition plainly anywhere outweighs a hedge elsewhere.
+  // A plain mention elsewhere used to override an explicit denial outright, because
+  // 'present' outranks everything. That is how "No history of diabetes. Advised annual
+  // diabetes screening." was recorded as diabetes — a screening order beating the line
+  // that says the patient does not have it, which is the exact failure this module
+  // exists to prevent.
+  //
+  // Neither reading wins now. An explicit denial is a deliberate clinical statement; a
+  // bare mention can be a form field, a differential or an order. When a document does
+  // both, it contradicts itself, and saying so is more useful than silently picking.
+  const asserted = found.find((f) => f.status === 'present');
+  const denied = found.find((f) => f.status === 'absent');
+
+  if (asserted && denied) {
+    return {
+      term,
+      // 'uncertain' keeps the finding in the record — dropping a condition the document
+      // states plainly would be its own kind of harm — but not as established fact.
+      status: 'uncertain',
+      cue: denied.cue,
+      evidence: denied.evidence,
+      contradiction: { asserted: asserted.evidence, denied: denied.evidence },
+    };
+  }
+
+  // Otherwise the most consequential reading wins, as before.
   const best = found.reduce((a, b) => (rank(b.status) < rank(a.status) ? b : a));
   return { term, status: best.status, cue: best.cue, evidence: best.evidence };
 }
@@ -392,9 +437,17 @@ export function isNegated(text: string, term: string): boolean {
 
 /** Patient-facing wording for why a finding was held back. */
 export function describeAssertion(assertion: Assertion): string | null {
-  const { term, status, cue, evidence } = assertion;
+  const { term, status, cue, evidence, contradiction } = assertion;
   const because = cue ? ` ("${cue}")` : '';
   const quote = evidence ? ` — "${evidence}"` : '';
+
+  if (contradiction) {
+    return (
+      `"${term}" is written both ways in this document — "${contradiction.denied}" ` +
+      `but also "${contradiction.asserted}". It has been kept in your record but not ` +
+      `as a confirmed finding. Please check with your doctor which is correct.`
+    );
+  }
 
   switch (status) {
     case 'absent':
