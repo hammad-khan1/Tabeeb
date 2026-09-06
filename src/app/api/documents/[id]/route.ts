@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { consume } from '@/lib/rate-limit';
 import { errorResponse, notFound } from '@/lib/api-error';
 import { getStorage } from '@/lib/storage';
 import { parseJsonBody, parseOrThrow, updateDocumentSchema, uuidParamSchema } from '@/lib/validation';
@@ -13,6 +14,7 @@ export async function GET(
 ) {
   try {
     const userId = await getCurrentUserId();
+    consume('read', userId);
     const id = parseOrThrow(uuidParamSchema, (await params).id);
 
     const [doc] = await getDb()
@@ -52,6 +54,7 @@ export async function PATCH(
 ) {
   try {
     const userId = await getCurrentUserId();
+    consume('settings', userId);
     const id = parseOrThrow(uuidParamSchema, (await params).id);
     const updates = await parseJsonBody(updateDocumentSchema, request);
 
@@ -76,6 +79,7 @@ export async function DELETE(
 ) {
   try {
     const userId = await getCurrentUserId();
+    consume('settings', userId);
     const id = parseOrThrow(uuidParamSchema, (await params).id);
 
     // Delete the row first: a leftover file is recoverable, a record pointing at a

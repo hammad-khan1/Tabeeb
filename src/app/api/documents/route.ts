@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
+    consume('read', userId);
     const query = parseSearchParams(listDocumentsSchema, request.nextUrl.searchParams);
 
     // The document list is polled while an upload processes, which makes it the

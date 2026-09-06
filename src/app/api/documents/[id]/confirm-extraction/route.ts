@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { consume } from '@/lib/rate-limit';
 import { errorResponse, notFound } from '@/lib/api-error';
 import {
   confirmExtractionSchema,
@@ -20,6 +21,7 @@ export async function POST(
 ) {
   try {
     const userId = await getCurrentUserId();
+    consume('confirmExtraction', userId);
     const id = parseOrThrow(uuidParamSchema, (await params).id);
     const { correctedText, structuredData } = await parseJsonBody(
       confirmExtractionSchema,

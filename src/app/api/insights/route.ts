@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server';
 import { eq, desc } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { consume } from '@/lib/rate-limit';
 import { errorResponse } from '@/lib/api-error';
 import { healthInsights } from '../../../../drizzle/schema';
 
 export async function GET() {
   try {
     const userId = await getCurrentUserId();
+    consume('read', userId);
 
     const insights = await getDb()      .select()
       .from(healthInsights)

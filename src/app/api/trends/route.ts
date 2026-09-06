@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, asc, or, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { consume } from '@/lib/rate-limit';
 import { errorResponse, notFound } from '@/lib/api-error';
 import { parseSearchParams, trendsSchema } from '@/lib/validation';
 import { analyzeLabTrend } from '@/services/trends/analyzer';
@@ -12,6 +13,7 @@ import { labResults } from '../../../../drizzle/schema';
 export async function GET(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
+    consume('read', userId);
     const params = request.nextUrl.searchParams;
 
     if (!params.has('test_name')) {

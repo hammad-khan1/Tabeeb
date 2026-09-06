@@ -107,6 +107,18 @@ export const createShareSchema = z.object({
   expiresInHours: z.coerce.number().int().min(1).max(24 * 30).default(168),
 });
 
+/**
+ * Deleting an account destroys the record and every uploaded file, irreversibly. The
+ * UI asks the user to type DELETE; the API asked for nothing, so anything holding a
+ * session could wipe the account in one request. The confirmation is now part of the
+ * contract rather than a courtesy the front end happens to provide.
+ */
+export const deleteAccountSchema = z.object({
+  confirm: z.literal('DELETE', {
+    message: 'Send { "confirm": "DELETE" } to permanently delete your account.',
+  }),
+});
+
 export const revokeShareSchema = z.object({
   token: z.string().trim().min(1).max(255),
 });

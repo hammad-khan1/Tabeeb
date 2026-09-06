@@ -136,7 +136,13 @@ export default function SettingsPage() {
     if (deleteConfirm !== "DELETE") return;
     setIsDeleting(true);
     try {
-      const res = await fetch("/api/settings", { method: "DELETE" });
+      // The API requires the confirmation explicitly — it does not assume the caller
+      // asked, because a session alone should not be enough to erase a medical record.
+      const res = await fetch("/api/settings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Delete failed");

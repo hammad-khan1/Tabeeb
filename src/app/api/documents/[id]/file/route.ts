@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { consume } from '@/lib/rate-limit';
 import { errorResponse } from '@/lib/api-error';
 import { getStorage } from '@/lib/storage';
 import { documents } from '../../../../../../drizzle/schema';
@@ -17,6 +18,7 @@ export async function GET(
 ) {
   try {
     const userId = await getCurrentUserId();
+    consume('file', userId);
     const { id } = await params;
 
     const [doc] = await getDb()

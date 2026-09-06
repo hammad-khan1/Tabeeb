@@ -60,6 +60,9 @@ export const documents = pgTable('documents', {
   index('documents_date_idx').on(table.documentDate),
   index('documents_hospital_idx').on(table.hospital),
   index('documents_status_idx').on(table.extractionStatus),
+  // The app's most common read: a user's documents, newest clinical date first.
+  // Ordering was falling back to the single-column indexes and re-sorting.
+  index('documents_user_date_idx').on(table.userId, table.documentDate.desc()),
 ]);
 
 export const documentChunks = pgTable('document_chunks', {
@@ -94,6 +97,9 @@ export const medications = pgTable('medications', {
 }, (table) => [
   index('medications_user_id_idx').on(table.userId),
   index('medications_document_id_idx').on(table.documentId),
+  // Active medicines lead the chat profile, the interaction check and the history
+  // summary, so the filter and the sort belong in one index.
+  index('medications_user_active_idx').on(table.userId, table.isActive, table.prescribedDate.desc()),
 ]);
 
 export const diagnoses = pgTable('diagnoses', {
@@ -112,6 +118,7 @@ export const diagnoses = pgTable('diagnoses', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('diagnoses_user_id_idx').on(table.userId),
+  index('diagnoses_user_date_idx').on(table.userId, table.diagnosedDate.desc()),
 ]);
 
 export const labResults = pgTable('lab_results', {
@@ -135,6 +142,7 @@ export const labResults = pgTable('lab_results', {
   index('lab_results_user_test_idx').on(table.userId, table.testName),
   index('lab_results_user_canonical_idx').on(table.userId, table.canonicalTestName),
   index('lab_results_date_idx').on(table.testDate),
+  index('lab_results_user_date_idx').on(table.userId, table.testDate.desc()),
 ]);
 
 export const allergies = pgTable('allergies', {
@@ -174,6 +182,7 @@ export const healthInsights = pgTable('health_insights', {
   generatedAt: timestamp('generated_at').defaultNow(),
 }, (table) => [
   index('health_insights_user_idx').on(table.userId),
+  index('health_insights_user_generated_idx').on(table.userId, table.generatedAt.desc()),
 ]);
 
 export const shareLinks = pgTable('share_links', {
@@ -220,5 +229,6 @@ export const imagingFindings = pgTable('imaging_findings', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('imaging_findings_user_idx').on(table.userId),
+  index('imaging_findings_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('imaging_findings_doc_idx').on(table.documentId),
 ]);
