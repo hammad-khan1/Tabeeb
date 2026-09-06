@@ -73,6 +73,40 @@ interface DocumentListResponse {
   hasMore: boolean;
 }
 
+/**
+ * Turns a failed response into something the user can act on.
+ *
+ * This used to be `await res.json()` on the error path, which throws its own error
+ * whenever the body is not JSON — and the bodies that matter most are not. A crashed
+ * container, a request killed for exceeding a proxy limit, or a gateway timeout all
+ * return HTML or nothing at all, and the user saw "Unexpected end of JSON input"
+ * instead of what actually happened.
+ */
+async function readErrorMessage(res: Response): Promise<string> {
+  const body = await res.text().catch(() => "");
+
+  try {
+    const parsed = JSON.parse(body) as { error?: string };
+    if (parsed.error) return parsed.error;
+  } catch {
+    // Not JSON — fall through to the status-based message.
+  }
+
+  switch (res.status) {
+    case 413:
+      return "That file is too large to upload.";
+    case 502:
+    case 503:
+      return "The server restarted while uploading — this usually means the file was too large for it to process. Try a smaller or lower-resolution image.";
+    case 504:
+      return "The upload timed out. Try again, or use a smaller file.";
+    case 429:
+      return "Too many uploads in a short time. Wait a minute and try again.";
+    default:
+      return `Upload failed (${res.status}).`;
+  }
+}
+
 export function useDocuments(filters?: DocumentFilters) {
   const key = `/api/documents${buildQueryString(filters)}`;
 
@@ -97,13 +131,21 @@ export function useDocuments(filters?: DocumentFilters) {
         method: "POST",
         body: formData,
       });
+
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Upload failed");
+        throw new Error(await readErrorMessage(res));
       }
-      const doc = await res.json();
+
+      // A 200 with an unreadable body is a proxy or a crash mid-response, not success.
+      const doc = await res.json().catch(() => null);
+      if (!doc) {
+        throw new Error(
+          "The upload finished but the server's reply could not be read. Refresh to see whether the document arrived."
+        );
+      }
+
       await mutate(key);
-      return doc;
+      return doc as DocumentRecord;
     },
     [key]
   );
