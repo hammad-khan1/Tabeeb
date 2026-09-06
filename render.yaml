@@ -1,0 +1,70 @@
+# Render blueprint.
+#
+# Point Render at this file (New → Blueprint) and it creates the service with the
+# right settings, so nothing depends on remembering to tick a box in the dashboard.
+#
+# Secrets are declared with `sync: false`, which means Render prompts for them and
+# never stores them in the repository.
+#
+# On the plan: `starter` rather than `free`. The free instance is 512MB and spins down
+# after 15 minutes idle. Neither is fatal, but `sharp` decoding a phone photo during
+# OCR can push a 512MB container over the limit, and the failure looks like a document
+# that silently never finishes processing. Change to `free` if you want to try it
+# anyway — the rest of the file is unaffected.
+
+services:
+  - type: web
+    name: tabeeb
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./Dockerfile
+
+    # Cheap and unauthenticated. A health check that queries the database turns a
+    # brief database blip into a restart loop.
+    healthCheckPath: /api/health
+
+    autoDeployTrigger: commit
+
+    envVars:
+      # ── Set by Render ──────────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+
+      # ── Prompted for on first deploy ───────────────────────────────────────
+      # Render exposes these as Docker build arguments too, which is what makes the
+      # Clerk publishable key work: Next inlines NEXT_PUBLIC_* into the client bundle
+      # at build time, so a value supplied only at runtime produces an image that
+      # builds cleanly and then fails every request.
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+
+      # Object storage. Without it the container writes uploads to its own disk, and
+      # every redeploy destroys them.
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        value: auto
+
+      # Used to build share links, so it must be the public URL of this service.
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+
+      # Optional: enables the biomedical NER cross-check. Rule-based NER runs without it.
+      - key: HF_API_KEY
+        sync: false

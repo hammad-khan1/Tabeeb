@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx drizzle/migrate.mts",
+    "db:migrate": "node drizzle/migrate.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "test:unit": "vitest run --exclude '**/app/api/**'",
