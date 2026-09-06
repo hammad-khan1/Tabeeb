@@ -8,6 +8,7 @@ import {
   settingsSchema,
   createShareSchema,
   chatSchema,
+  deleteAccountSchema,
 } from './validation';
 import { MAX_FILE_SIZE } from './constants';
 import { ApiError } from './api-error';
@@ -175,5 +176,27 @@ describe('chatSchema', () => {
 
   it('caps message length', () => {
     expect(() => parseOrThrow(chatSchema, { message: 'x'.repeat(5000) })).toThrow(ApiError);
+  });
+});
+
+describe('deleteAccountSchema', () => {
+  it('requires the confirmation word', () => {
+    // The endpoint destroys the record and every uploaded file. Holding a session
+    // should not be enough on its own.
+    expect(() => parseOrThrow(deleteAccountSchema, {})).toThrow(ApiError);
+    expect(() => parseOrThrow(deleteAccountSchema, { confirm: 'yes' })).toThrow(ApiError);
+    expect(() => parseOrThrow(deleteAccountSchema, { confirm: 'delete' })).toThrow(ApiError);
+  });
+
+  it('accepts the exact confirmation', () => {
+    expect(parseOrThrow(deleteAccountSchema, { confirm: 'DELETE' })).toEqual({ confirm: 'DELETE' });
+  });
+
+  it('explains what to send', () => {
+    try {
+      parseOrThrow(deleteAccountSchema, {});
+    } catch (error) {
+      expect((error as Error).message).toMatch(/confirm.*DELETE/i);
+    }
   });
 });

@@ -139,11 +139,60 @@ export async function getTherapeuticClasses(
  * no rxcui rather than throwing, so an RxNav outage cannot fail the whole check —
  * but the caller can tell the difference and say what it could not verify.
  */
-export async function resolveDrugConcepts(names: string[]): Promise<DrugConcept[]> {
-  const unique = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+/**
+ * A name to resolve, optionally with the RxCUI already known.
+ *
+ * Medications carry an `rxnormId` from extraction, and it was being selected from the
+ * database and then ignored: every check re-resolved every current medicine by name.
+ * At three requests per drug — name lookup, ingredients, classes — a patient on eight
+ * medicines cost twenty-four round-trips per check for data already stored.
+ */
+export interface DrugQuery {
+  name: string;
+  rxcui?: string | null;
+}
 
-  return limitConcurrency(unique, RXNAV_CONCURRENCY, async (query) => {
-    const rxcui = await getRxNormId(query);
+/**
+ * Concept lookups are stable — RxNorm ids do not change between two checks a minute
+ * apart — so results are memoised for the process lifetime, bounded so a long-running
+ * server cannot grow without limit.
+ */
+const CONCEPT_CACHE_LIMIT = 500;
+const conceptCache = new Map<string, DrugConcept>();
+
+function cacheConcept(key: string, concept: DrugConcept): DrugConcept {
+  if (conceptCache.size >= CONCEPT_CACHE_LIMIT) {
+    const oldest = conceptCache.keys().next().value;
+    if (oldest !== undefined) conceptCache.delete(oldest);
+  }
+  conceptCache.set(key, concept);
+  return concept;
+}
+
+export async function resolveDrugConcepts(
+  input: Array<string | DrugQuery>
+): Promise<DrugConcept[]> {
+  const queries = new Map<string, DrugQuery>();
+  for (const item of input) {
+    const query: DrugQuery =
+      typeof item === 'string' ? { name: item } : { name: item.name, rxcui: item.rxcui };
+    const name = query.name?.trim();
+    if (!name) continue;
+    // A later entry carrying a known rxcui wins over an earlier bare name.
+    const existing = queries.get(name);
+    if (!existing || (!existing.rxcui && query.rxcui)) {
+      queries.set(name, { name, rxcui: query.rxcui ?? null });
+    }
+  }
+
+  return limitConcurrency([...queries.values()], RXNAV_CONCURRENCY, async (entry) => {
+    const query = entry.name;
+    const cacheKey = entry.rxcui ? `rxcui:${entry.rxcui}` : `name:${query.toLowerCase()}`;
+    const cached = conceptCache.get(cacheKey);
+    if (cached) return { ...cached, query };
+
+    // The stored id skips the name lookup entirely — one request saved per drug.
+    const rxcui = entry.rxcui?.trim() || (await getRxNormId(query));
     if (!rxcui) {
       return { query, rxcui: null, ingredients: [], classes: [] };
     }
@@ -157,6 +206,11 @@ export async function resolveDrugConcepts(names: string[]): Promise<DrugConcept[
     const resolved =
       ingredients.length > 0 ? ingredients : [{ rxcui, name: query.toLowerCase() }];
 
-    return { query, rxcui, ingredients: resolved, classes };
+    return cacheConcept(cacheKey, { query, rxcui, ingredients: resolved, classes });
   });
+}
+
+/** Test seam. */
+export function clearConceptCache(): void {
+  conceptCache.clear();
 }

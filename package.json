@@ -13,7 +13,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx drizzle/migrate.mts",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:unit": "vitest run --exclude '**/app/api/**'",
+    "test:routes": "vitest run 'src/app/api/**/*.test.ts'"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",

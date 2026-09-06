@@ -53,6 +53,12 @@ export const updateDocumentSchema = z
 export const listDocumentsSchema = z.object({
   type: documentTypeSchema.optional(),
   hospital: z.string().trim().max(500).optional(),
+  /**
+   * Filters to documents carrying a diagnosis of this condition. Matched on the
+   * canonical concept where one was linked, so "DM type II", "T2DM" and "شوگر" all
+   * select the same records — which is the point of the filter.
+   */
+  condition: z.string().trim().min(1).max(200).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
   search: z.string().trim().min(1).max(200).optional(),
@@ -105,6 +111,18 @@ export const createShareSchema = z.object({
   documentIds: z.array(z.uuid()).max(200).default([]),
   // Capped at 30 days — an indefinite link to a medical record is a liability.
   expiresInHours: z.coerce.number().int().min(1).max(24 * 30).default(168),
+});
+
+/**
+ * Deleting an account destroys the record and every uploaded file, irreversibly. The
+ * UI asks the user to type DELETE; the API asked for nothing, so anything holding a
+ * session could wipe the account in one request. The confirmation is now part of the
+ * contract rather than a courtesy the front end happens to provide.
+ */
+export const deleteAccountSchema = z.object({
+  confirm: z.literal('DELETE', {
+    message: 'Send { "confirm": "DELETE" } to permanently delete your account.',
+  }),
 });
 
 export const revokeShareSchema = z.object({

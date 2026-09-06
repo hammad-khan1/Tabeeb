@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { getCurrentUserId } from '@/lib/auth';
+import { getCurrentUserId, forgetProvisionedUser } from '@/lib/auth';
+import { consume } from '@/lib/rate-limit';
 import { errorResponse } from '@/lib/api-error';
 import { getStorage } from '@/lib/storage';
-import { parseJsonBody, settingsSchema } from '@/lib/validation';
+import { parseJsonBody, settingsSchema, deleteAccountSchema } from '@/lib/validation';
 import { users } from '../../../../drizzle/schema';
 
 export async function GET() {
   try {
     const userId = await getCurrentUserId();
+    consume('read', userId);
 
     const [user] = await getDb()
       .select({
@@ -36,6 +38,7 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
+    consume('settings', userId);
     // These land in jsonb and, for conditions, in the chat system prompt, so both
     // shape and size are validated rather than taken as given.
     const updates = await parseJsonBody(settingsSchema, request);
@@ -54,9 +57,13 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
+    consume('deleteAccount', userId);
+    // Irreversible, so the intent is required explicitly rather than inferred from
+    // the caller having reached this endpoint.
+    await parseJsonBody(deleteAccountSchema, request);
 
     // Files first: deleting the user cascades the document rows away, and without
     // their storagePath the files on disk become unreachable orphans. This is what
@@ -66,6 +73,10 @@ export async function DELETE() {
     // Cascades to documents, chunks, medications, diagnoses, labs, allergies,
     // imaging findings, chat messages, insights, interaction checks and share links.
     await getDb().delete(users).where(eq(users.id, userId));
+
+    // The provisioning cache still says this id has a row. Without clearing it, a user
+    // who deletes their account and signs in again would never get one re-created.
+    forgetProvisionedUser(userId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

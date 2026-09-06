@@ -26,6 +26,14 @@ vi.mock('drizzle-orm', async (importOriginal) => {
 
 const queriedTables: string[] = [];
 
+/** Limits the summarizer asked for, per table, so the caps can be asserted. */
+const appliedLimits = new Map<string, number>();
+
+/**
+ * Fully fluent: every builder method returns the chain and only awaiting resolves it.
+ * An earlier version terminated at `orderBy`, so adding `.limit()` to the production
+ * queries broke thirteen tests that were not about limits at all.
+ */
 function makeSelectChain(table: string, rows: unknown[]) {
   const chain = {
     from: () => chain,
@@ -33,7 +41,12 @@ function makeSelectChain(table: string, rows: unknown[]) {
       queriedTables.push(table);
       return chain;
     },
-    orderBy: () => Promise.resolve(rows),
+    orderBy: () => chain,
+    limit: (n: number) => {
+      appliedLimits.set(table, n);
+      return chain;
+    },
+    offset: () => chain,
     then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(rows).then(resolve),
   };
   return chain;
@@ -58,6 +71,7 @@ const { getMedicalHistorySummary } = await import('./summarizer');
 beforeEach(() => {
   scopedColumns.length = 0;
   queriedTables.length = 0;
+  appliedLimits.clear();
   callIndex = 0;
 });
 
@@ -101,3 +115,21 @@ describe('getMedicalHistorySummary', () => {
     expect(queriedTables).toEqual([]);
   });
 });
+
+describe('row caps', () => {
+  // None of these queries had a limit, and this is the app's most-used read path:
+  // the dashboard, the history page, and every share link handed to a doctor.
+  it('caps every clinical table it reads', async () => {
+    await getMedicalHistorySummary('u1');
+
+    for (const table of ['documents', 'medications', 'diagnoses', 'labResults', 'allergies']) {
+      expect(appliedLimits.get(table), `${table} has no limit`).toBeGreaterThan(0);
+    }
+  });
+
+  it('leaves room for a real history rather than truncating to a handful', () => {
+    // A cap so tight it hides a patient's record is its own bug.
+    for (const [, limit] of appliedLimits) expect(limit).toBeGreaterThanOrEqual(50);
+  });
+});
+

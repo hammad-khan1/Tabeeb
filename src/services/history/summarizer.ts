@@ -9,6 +9,26 @@ import {
   allergies,
 } from '../../../drizzle/schema';
 
+/**
+ * Row caps for the history summary.
+ *
+ * None of these queries had a limit, and this is the app's most-used read path: the
+ * dashboard, the history page, and every share link a patient hands a doctor. On a
+ * few documents that is invisible; on two years of records it is a slow page built
+ * from a payload nobody reads to the end of.
+ *
+ * The bias is toward recency, because a summary is about the patient's current state.
+ * Allergies are the exception and are capped high without a date filter — an allergy
+ * from 2011 is exactly as dangerous as one from last week.
+ */
+const HISTORY_LIMITS = {
+  documents: 200,
+  medications: 60,
+  diagnoses: 60,
+  labResults: 200,
+  allergies: 100,
+} as const;
+
 interface ConditionEntry {
   condition: string;
   icd10Code?: string | null;
@@ -97,7 +117,8 @@ export async function getMedicalHistorySummary(
       .select()
       .from(documents)
       .where(and(eq(documents.userId, userId), scopeBy(documents.id)))
-      .orderBy(desc(documents.documentDate)),
+      .orderBy(desc(documents.documentDate), desc(documents.createdAt))
+      .limit(HISTORY_LIMITS.documents),
     getDb()
       .select()
       .from(medications)
@@ -107,21 +128,26 @@ export async function getMedicalHistorySummary(
           eq(medications.isActive, true),
           scopeBy(medications.documentId)
         )
-      ),
+      )
+      .orderBy(desc(medications.prescribedDate))
+      .limit(HISTORY_LIMITS.medications),
     getDb()
       .select()
       .from(diagnoses)
       .where(and(eq(diagnoses.userId, userId), scopeBy(diagnoses.documentId)))
-      .orderBy(desc(diagnoses.diagnosedDate)),
+      .orderBy(desc(diagnoses.diagnosedDate))
+      .limit(HISTORY_LIMITS.diagnoses),
     getDb()
       .select()
       .from(labResults)
       .where(and(eq(labResults.userId, userId), scopeBy(labResults.documentId)))
-      .orderBy(desc(labResults.testDate)),
+      .orderBy(desc(labResults.testDate))
+      .limit(HISTORY_LIMITS.labResults),
     getDb()
       .select()
       .from(allergies)
-      .where(and(eq(allergies.userId, userId), scopeBy(allergies.documentId))),
+      .where(and(eq(allergies.userId, userId), scopeBy(allergies.documentId)))
+      .limit(HISTORY_LIMITS.allergies),
   ]);
 
   const conditions: ConditionEntry[] = diags.map((d) => ({

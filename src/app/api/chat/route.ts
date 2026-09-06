@@ -15,7 +15,6 @@ import {
   allergies,
   users,
   chatMessages,
-  imagingFindings,
   documents,
 } from '../../../../drizzle/schema';
 
@@ -192,7 +191,7 @@ export async function POST(request: NextRequest) {
     const retrievalQuery = await rewriteForRetrieval(message, priorTurns);
     const chunks = await retrieveRelevantChunks(userId, retrievalQuery);
 
-    const [meds, allergyRows, [user], imgFindings] = await Promise.all([
+    const [meds, allergyRows, [user]] = await Promise.all([
       getDb()
         .select()
         .from(medications)
@@ -200,12 +199,6 @@ export async function POST(request: NextRequest) {
         .limit(PROFILE_LIMIT),
       getDb().select().from(allergies).where(eq(allergies.userId, userId)).limit(PROFILE_LIMIT),
       getDb().select().from(users).where(eq(users.id, userId)).limit(1),
-      getDb()
-        .select()
-        .from(imagingFindings)
-        .where(eq(imagingFindings.userId, userId))
-        .orderBy(desc(imagingFindings.createdAt))
-        .limit(PROFILE_LIMIT),
     ]);
 
     const userProfile = {
@@ -223,13 +216,6 @@ export async function POST(request: NextRequest) {
         reaction: a.reaction ?? undefined,
       })),
       conditions: (user?.knownConditions as string[]) ?? [],
-      imagingFindings: imgFindings.map((f) => ({
-        finding: f.finding,
-        bodyPart: f.bodyPart,
-        severity: f.severity,
-        location: f.location,
-        urgencyLevel: f.urgencyLevel,
-      })),
     };
 
     const sources: Source[] = chunks.map((c) => ({

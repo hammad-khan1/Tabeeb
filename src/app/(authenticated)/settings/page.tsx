@@ -136,7 +136,13 @@ export default function SettingsPage() {
     if (deleteConfirm !== "DELETE") return;
     setIsDeleting(true);
     try {
-      const res = await fetch("/api/settings", { method: "DELETE" });
+      // The API requires the confirmation explicitly — it does not assume the caller
+      // asked, because a session alone should not be enough to erase a medical record.
+      const res = await fetch("/api/settings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Delete failed");
@@ -187,7 +193,7 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <User className="size-4" />
+            <User className="size-4" aria-hidden="true" />
             Profile
           </CardTitle>
         </CardHeader>
@@ -218,7 +224,7 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Globe className="size-4" />
+            <Globe className="size-4" aria-hidden="true" />
             Language Preference
           </CardTitle>
         </CardHeader>
@@ -267,8 +273,8 @@ export default function SettingsPage() {
               placeholder="Add an allergy (e.g., Penicillin)"
               className="flex-1"
             />
-            <Button variant="outline" size="icon" onClick={addAllergy}>
-              <Plus className="size-4" />
+            <Button variant="outline" size="icon" onClick={addAllergy} aria-label="Add allergy">
+              <Plus className="size-4" aria-hidden="true" />
             </Button>
           </div>
           {allergies.length > 0 ? (
@@ -281,7 +287,7 @@ export default function SettingsPage() {
                     onClick={() => removeAllergy(allergy)}
                     className="ms-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                   >
-                    <X className="size-3" />
+                    <X className="size-3" aria-hidden="true" />
                   </button>
                 </Badge>
               ))}
@@ -298,7 +304,7 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Stethoscope className="size-4" />
+            <Stethoscope className="size-4" aria-hidden="true" />
             Known Conditions
           </CardTitle>
         </CardHeader>
@@ -311,8 +317,8 @@ export default function SettingsPage() {
               placeholder="Add a condition (e.g., Hypertension)"
               className="flex-1"
             />
-            <Button variant="outline" size="icon" onClick={addCondition}>
-              <Plus className="size-4" />
+            <Button variant="outline" size="icon" onClick={addCondition} aria-label="Add condition">
+              <Plus className="size-4" aria-hidden="true" />
             </Button>
           </div>
           {conditions.length > 0 ? (
@@ -325,7 +331,7 @@ export default function SettingsPage() {
                     onClick={() => removeCondition(condition)}
                     className="ms-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
                   >
-                    <X className="size-3" />
+                    <X className="size-3" aria-hidden="true" />
                   </button>
                 </Badge>
               ))}
@@ -343,23 +349,25 @@ export default function SettingsPage() {
         <Button onClick={handleSave} disabled={isSaving}>
           {isSaving ? (
             <>
-              <Loader2 className="me-2 size-4 animate-spin" />
+              <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
               Saving...
             </>
           ) : saveSuccess ? (
             <>
-              <CheckCircle2 className="me-2 size-4 text-emerald-500" />
+              <CheckCircle2 className="me-2 size-4 text-emerald-500" aria-hidden="true" />
               Saved
             </>
           ) : (
             <>
-              <Save className="me-2 size-4" />
+              <Save className="me-2 size-4" aria-hidden="true" />
               Save Preferences
             </>
           )}
         </Button>
         {saveError && (
-          <span className="text-sm text-red-600">{saveError}</span>
+          <span role="alert" className="text-sm text-red-600">
+            {saveError}
+          </span>
         )}
       </div>
 
@@ -369,7 +377,7 @@ export default function SettingsPage() {
       <Card className="border-red-200">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base text-red-700">
-            <AlertTriangle className="size-4" />
+            <AlertTriangle className="size-4" aria-hidden="true" />
             Danger Zone
           </CardTitle>
         </CardHeader>
@@ -383,7 +391,7 @@ export default function SettingsPage() {
             className="mt-4"
             onClick={() => setDeleteDialogOpen(true)}
           >
-            <Trash2 className="me-2 size-4" />
+            <Trash2 className="me-2 size-4" aria-hidden="true" />
             Delete All Data
           </Button>
         </CardContent>
@@ -426,12 +434,12 @@ export default function SettingsPage() {
             >
               {isDeleting ? (
                 <>
-                  <Loader2 className="me-2 size-4 animate-spin" />
+                  <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
                   Deleting...
                 </>
               ) : (
                 <>
-                  <Trash2 className="me-2 size-4" />
+                  <Trash2 className="me-2 size-4" aria-hidden="true" />
                   Delete Everything
                 </>
               )}

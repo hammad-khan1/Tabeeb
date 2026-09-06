@@ -79,12 +79,22 @@ const medicationSchema = z.object({
   prescribedDate: optionalString,
 });
 
+/**
+ * Not something the extraction model produces — the NLP reconciler fills it in from
+ * the surrounding text. It lives on the schema so the annotated extraction is still a
+ * ValidatedExtraction and can be stored as the document's structured data unchanged.
+ */
+const assertionStatusSchema = z
+  .enum(['present', 'absent', 'family', 'historical', 'hypothetical', 'uncertain'])
+  .optional();
+
 const diagnosisSchema = z.object({
   condition: optionalString,
   icd10Code: optionalString,
   severity: optionalString,
   notes: optionalString,
   diagnosedDate: optionalString,
+  assertionStatus: assertionStatusSchema,
 });
 
 const labResultSchema = z.object({
@@ -102,6 +112,7 @@ const allergySchema = z.object({
   allergyType: optionalString,
   severity: optionalString,
   reaction: optionalString,
+  assertionStatus: assertionStatusSchema,
 });
 
 export const structuredExtractionSchema = z.object({

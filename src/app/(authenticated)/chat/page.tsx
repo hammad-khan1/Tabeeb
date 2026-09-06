@@ -132,8 +132,9 @@ export default function ChatPage() {
               size="icon"
               className="size-7"
               onClick={startNewConversation}
+              aria-label="Start a new conversation"
             >
-              <Plus className="size-4" />
+              <Plus className="size-4" aria-hidden="true" />
             </Button>
           </div>
           <ScrollArea className="flex-1">
@@ -198,7 +199,7 @@ export default function ChatPage() {
               History
             </Button>
             <Button variant="ghost" size="sm" onClick={startNewConversation}>
-              <Plus className="me-2 size-3.5" />
+              <Plus className="me-2 size-3.5" aria-hidden="true" />
               New Chat
             </Button>
           </div>
@@ -206,11 +207,24 @@ export default function ChatPage() {
 
         {/* Messages */}
         <ScrollArea className="flex-1 rounded-xl border bg-background">
-          <div className="space-y-4 p-4">
+          {/*
+            The assistant's answer streams in token by token. `aria-live="polite"`
+            announces it as it arrives; without it a screen-reader user hears nothing
+            at all and has no way to know the reply has finished. `aria-atomic="false"`
+            keeps it reading only the new text rather than the whole thread each time.
+          */}
+          <div
+            className="space-y-4 p-4"
+            role="log"
+            aria-live="polite"
+            aria-atomic="false"
+            aria-busy={isLoading}
+            aria-label="Conversation"
+          >
             {messages.length === 0 ? (
               <div className="flex flex-col items-center py-20 text-center">
                 <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <MessageSquare className="size-8" />
+                  <MessageSquare className="size-8" aria-hidden="true" />
                 </div>
                 <h2 className="text-lg font-semibold">
                   Ask me anything about your medical history
@@ -271,7 +285,7 @@ export default function ChatPage() {
                                 href={`/documents/${source.documentId}`}
                                 className="inline-flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium transition-colors hover:bg-background"
                               >
-                                <FileText className="size-2.5" />
+                                <FileText className="size-2.5" aria-hidden="true" />
                                 {source.documentTitle}
                               </Link>
                             )
@@ -288,7 +302,7 @@ export default function ChatPage() {
               messages[messages.length - 1].content === "" && (
                 <div className="flex justify-start">
                   <div className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3">
-                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
                     <span className="text-sm text-muted-foreground">
                       Thinking...
                     </span>
@@ -317,26 +331,31 @@ export default function ChatPage() {
               placeholder="Ask about your health records..."
               className="min-h-[44px] resize-none pe-12"
               rows={1}
+              aria-label="Ask about your health records"
             />
           </div>
+          {/* Icon-only controls carry their name on the button, and the icon itself is
+              hidden — otherwise a screen reader announces the SVG and nothing useful. */}
           <Button
             variant="outline"
             size="icon"
             className="size-[44px] shrink-0"
             onClick={() => setVoiceDialogOpen(true)}
+            aria-label="Ask by voice"
           >
-            <Mic className="size-4" />
+            <Mic className="size-4" aria-hidden="true" />
           </Button>
           <Button
             size="icon"
             className="size-[44px] shrink-0"
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
+            aria-label={isLoading ? "Sending your question" : "Send question"}
           >
             {isLoading ? (
-              <Loader2 className="size-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             ) : (
-              <Send className="size-4" />
+              <Send className="size-4" aria-hidden="true" />
             )}
           </Button>
         </div>
@@ -358,14 +377,14 @@ export default function ChatPage() {
 
             {recorderError && (
               <div className="flex items-center gap-2 text-sm text-red-600">
-                <AlertCircle className="size-4" />
+                <AlertCircle className="size-4" aria-hidden="true" />
                 {recorderError}
               </div>
             )}
 
             {!isRecording && !audioBlob && (
               <Button size="lg" onClick={startRecording}>
-                <Mic className="me-2 size-5" />
+                <Mic className="me-2 size-5" aria-hidden="true" />
                 Start Recording
               </Button>
             )}
@@ -376,7 +395,7 @@ export default function ChatPage() {
                   Recording
                 </Badge>
                 <Button variant="destructive" size="lg" onClick={stopRecording}>
-                  <Square className="me-2 size-4" />
+                  <Square className="me-2 size-4" aria-hidden="true" />
                   Stop
                 </Button>
               </div>
@@ -399,7 +418,7 @@ export default function ChatPage() {
                   >
                     {transcribing ? (
                       <>
-                        <Loader2 className="me-2 size-4 animate-spin" />
+                        <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
                         Transcribing...
                       </>
                     ) : (

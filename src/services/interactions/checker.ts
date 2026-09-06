@@ -1,9 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@/lib/db';
 import { getGroq, MODELS } from '@/lib/groq';
 import { medications, allergies, interactionChecks } from '../../../drizzle/schema';
-import { resolveDrugConcepts, type DrugConcept } from './rxnav-client';
+import { resolveDrugConcepts, type DrugConcept, type DrugQuery } from './rxnav-client';
 
 /**
  * What this can and cannot check.
@@ -93,6 +93,14 @@ async function extractEntities(query: string) {
   }
 }
 
+/**
+ * Caps on how much of the record enters an interaction check. Both selects were
+ * unbounded, and the results go into a model prompt *and* fan out to RxNav — so a
+ * patient on many medicines paid for it twice. Matches the chat route's PROFILE_LIMIT
+ * rather than introducing a second number for the same idea.
+ */
+const PROFILE_LIMIT = 60;
+
 async function fetchPatientProfile(userId: string) {
   const [medRows, allergyRows] = await Promise.all([
     getDb()
@@ -105,7 +113,10 @@ async function fetchPatientProfile(userId: string) {
         isActive: medications.isActive,
       })
       .from(medications)
-      .where(eq(medications.userId, userId)),
+      .where(eq(medications.userId, userId))
+      // Active first: an inactive medicine cannot interact with anything today.
+      .orderBy(desc(medications.isActive), desc(medications.prescribedDate))
+      .limit(PROFILE_LIMIT),
     getDb()
       .select({
         allergen: allergies.allergen,
@@ -113,7 +124,8 @@ async function fetchPatientProfile(userId: string) {
         reaction: allergies.reaction,
       })
       .from(allergies)
-      .where(eq(allergies.userId, userId)),
+      .where(eq(allergies.userId, userId))
+      .limit(PROFILE_LIMIT),
   ]);
 
   return { medications: medRows, allergies: allergyRows };
@@ -342,18 +354,20 @@ export async function checkInteractions(
   const profile = await fetchPatientProfile(userId);
   const activeMeds = profile.medications.filter((m) => m.isActive !== false);
 
-  // Prefer the generic name for resolution; keep the brand name for display.
+  // Prefer the generic name for resolution; keep the brand name for display. The
+  // rxnormId recorded during extraction is passed through so the name lookup is
+  // skipped for every medicine already resolved once.
   const currentLabels = new Map<string, string>();
-  const currentNames: string[] = [];
+  const currentQueries: DrugQuery[] = [];
   for (const med of activeMeds) {
     const resolveName = med.genericName ?? med.name;
-    currentNames.push(resolveName);
+    currentQueries.push({ name: resolveName, rxcui: med.rxnormId });
     currentLabels.set(resolveName, med.name);
   }
 
   const [queriedConcepts, currentConcepts] = await Promise.all([
     resolveDrugConcepts(queriedItems),
-    resolveDrugConcepts(currentNames),
+    resolveDrugConcepts(currentQueries),
   ]);
 
   const findings = deriveFindings(

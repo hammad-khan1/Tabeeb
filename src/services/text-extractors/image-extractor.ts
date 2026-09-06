@@ -5,22 +5,12 @@ import {
   enhanceForHandwriting,
   type NormalizedImage,
 } from './image-normalizer';
-import { getRadiologyClassifier, type ClassificationResult } from '@/services/radiology/classifier';
-import { buildFindings, type ValidatedFinding } from '@/services/radiology/validator';
 
-/**
- * Findings now come from `services/radiology/classifier`, a purpose-trained chest
- * X-ray model — not from the vision LLM. See that file for why.
- */
-export type { ValidatedFinding as RadiologyFinding } from '@/services/radiology/validator';
 
 export interface ImageExtractionResult {
   text: string;
   confidence: number;
   isHandwritten: boolean;
-  radiologyFindings?: ValidatedFinding[];
-  /** Raw classifier output, so the caller can report what was and was not checked. */
-  classification?: ClassificationResult;
 }
 
 const VISION_MAX_TOKENS = 8192;
@@ -212,45 +202,16 @@ export async function ocrImage(buffer: Buffer, mimeType: string): Promise<OcrPas
   return refineHandwriting(buffer, mimeType, first);
 }
 
-/**
- * Runs the chest X-ray classifier over the image.
- *
- * This used to prompt the general-purpose vision LLM as "a board-certified radiologist
- * AI performing clinical-grade analysis" and take whatever it produced. A general VLM
- * cannot detect a pneumothorax or a fracture; it produced fluent, unfounded findings
- * that were stored as clinical data. Detection is now the classifier's job, and when
- * none is configured no findings are produced at all.
- */
-async function classifyRadiologyImage(
-  buffer: Buffer,
-  mimeType: string
-): Promise<{ findings: ValidatedFinding[]; classification: ClassificationResult }> {
-  const normalized = await normalizeForVision(buffer, mimeType);
-  const classification = await getRadiologyClassifier().classify(
-    normalized.buffer,
-    normalized.mimeType
-  );
-  return { findings: buildFindings(classification), classification };
-}
-
 export async function extractFromImage(
   buffer: Buffer,
-  mimeType: string,
-  documentType?: string
+  mimeType: string
 ): Promise<ImageExtractionResult> {
   const ocr = await ocrImage(buffer, mimeType);
 
-  const result: ImageExtractionResult = {
+  return {
     text: ocr.text,
     confidence: ocr.confidence,
     isHandwritten: ocr.isHandwritten,
   };
-
-  if (documentType === 'imaging_report') {
-    const { findings, classification } = await classifyRadiologyImage(buffer, mimeType);
-    result.radiologyFindings = findings;
-    result.classification = classification;
-  }
-
-  return result;
 }
+

@@ -1,7 +1,6 @@
 import { SUPPORTED_FILE_TYPES, type FileKind } from '@/lib/constants';
 import { extractFromPdf } from './pdf-extractor';
-import { extractFromImage, ocrImage, type RadiologyFinding } from './image-extractor';
-import type { ClassificationResult } from '@/services/radiology/classifier';
+import { extractFromImage, ocrImage } from './image-extractor';
 import { extractFromDocx } from './docx-extractor';
 
 export interface ExtractionResult {
@@ -9,9 +8,6 @@ export interface ExtractionResult {
   isScanned?: boolean;
   isHandwritten?: boolean;
   confidence?: number;
-  radiologyFindings?: RadiologyFinding[];
-  /** Present for imaging documents: what the X-ray classifier did or could not check. */
-  classification?: ClassificationResult;
 }
 
 /** Dispatch is driven by the same map the uploader validates against, so the two cannot drift. */
@@ -78,8 +74,7 @@ async function ocrPdfPages(pageImages: Buffer[]): Promise<ExtractionResult> {
 
 export async function extractText(
   buffer: Buffer,
-  mimeType: string,
-  documentType?: string
+  mimeType: string
 ): Promise<ExtractionResult> {
   const normalizedMime = mimeType.toLowerCase().split(';')[0].trim();
   const kind = fileKindFor(normalizedMime);
@@ -99,13 +94,11 @@ export async function extractText(
   }
 
   if (kind === 'image') {
-    const result = await extractFromImage(buffer, normalizedMime, documentType);
+    const result = await extractFromImage(buffer, normalizedMime);
     return {
       text: result.text,
       isHandwritten: result.isHandwritten,
       confidence: result.confidence,
-      radiologyFindings: result.radiologyFindings,
-      classification: result.classification,
     };
   }
 

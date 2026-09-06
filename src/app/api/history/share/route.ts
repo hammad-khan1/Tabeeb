@@ -9,6 +9,7 @@ import { createShareLink, listShareLinks, revokeShareLink } from '@/services/his
 export async function GET() {
   try {
     const userId = await getCurrentUserId();
+    consume('read', userId);
     return NextResponse.json(await listShareLinks(userId));
   } catch (error) {
     return errorResponse('GET /api/history/share', error, 'Failed to list share links');
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
+    consume('share', userId);
     const { token } = parseSearchParams(revokeShareSchema, request.nextUrl.searchParams);
 
     await revokeShareLink(userId, token);

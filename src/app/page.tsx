@@ -26,7 +26,7 @@ export default async function LandingPage() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2.5">
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Activity className="size-5" />
+              <Activity className="size-5" aria-hidden="true" />
             </div>
             <span className="text-xl font-semibold tracking-tight text-foreground">
               Tabeeb
@@ -145,7 +145,7 @@ export default async function LandingPage() {
       <footer className="border-t border-border px-4 py-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-2">
-            <Activity className="size-4 text-primary" />
+            <Activity className="size-4 text-primary" aria-hidden="true" />
             <span className="text-sm font-medium text-foreground">
               Tabeeb
             </span>

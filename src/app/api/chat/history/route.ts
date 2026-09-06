@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
+import { consume } from '@/lib/rate-limit';
 import { errorResponse } from '@/lib/api-error';
 import { chatHistorySchema, parseSearchParams } from '@/lib/validation';
 import { chatMessages } from '../../../../../drizzle/schema';
@@ -9,6 +10,7 @@ import { chatMessages } from '../../../../../drizzle/schema';
 export async function GET(request: NextRequest) {
   try {
     const userId = await getCurrentUserId();
+    consume('read', userId);
     const { conversationId, limit } = parseSearchParams(
       chatHistorySchema,
       request.nextUrl.searchParams

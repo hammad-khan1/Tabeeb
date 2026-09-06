@@ -39,6 +39,30 @@ export const LIMITS = {
   /** Embeds the query, so it is not free, but it is cheap. */
   search: { limit: 60, windowMs: 60 * 1000 },
   share: { limit: 20, windowMs: 60 * 60 * 1000 },
+
+  /**
+   * Re-embeds every chunk and regenerates the summary — it carries maxDuration=300
+   * precisely because it is expensive, and had no limit at all.
+   */
+  confirmExtraction: { limit: 20, windowMs: 60 * 60 * 1000 },
+
+  /**
+   * Permanently destroys the account, its documents and its files. The low ceiling is
+   * not about cost; it is so a loop cannot be what deletes someone's medical record.
+   */
+  deleteAccount: { limit: 3, windowMs: 60 * 60 * 1000 },
+
+  /** Writes to the profile that is injected into the chat prompt. */
+  settings: { limit: 60, windowMs: 60 * 60 * 1000 },
+
+  /**
+   * Ordinary reads. Generous — these exist to stop a runaway client hammering the
+   * database, not to ration normal use.
+   */
+  read: { limit: 300, windowMs: 60 * 1000 },
+
+  /** Serves file bytes, so heavier than a JSON read. */
+  file: { limit: 120, windowMs: 60 * 1000 },
 } as const satisfies Record<string, RateLimit>;
 
 function sweep(now: number): void {

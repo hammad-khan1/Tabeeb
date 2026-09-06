@@ -8,13 +8,11 @@ import {
   diagnoses,
   labResults,
   allergies,
-  imagingFindings,
 } from '../../drizzle/schema';
 import { getStorage } from '@/lib/storage';
 import { getGroq, MODELS } from '@/lib/groq';
 import { embeddingProvider } from '@/lib/embeddings';
 import { extractText } from '@/services/text-extractors';
-import { buildImagingNote } from '@/services/radiology/validator';
 import {
   parseStructuredExtraction,
   isExtractionEmpty,
@@ -23,6 +21,8 @@ import {
   type ValidatedExtraction,
 } from '@/services/extraction-schema';
 import { reconcileExtraction } from '@/services/nlp/reconciler';
+import { belongsToPatient } from '@/services/nlp/assertion';
+import { linkCondition } from '@/services/nlp/condition-linker';
 import { canonicalizeLab } from '@/services/nlp/lab-normalizer';
 import { parseMedicalValue, isOutOfRange } from '@/lib/medical-values';
 import { generateDocumentSummary } from '@/services/summarizer';
@@ -324,17 +324,33 @@ function buildEntityRows(
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
+  // A condition the document denies, attributes to a relative, or raises as advice
+  // about what to do if it happens is not this patient's problem, and must never
+  // become a row in their record. The reconciler explains each one in the document's
+  // notes, and the full extraction is still stored as structured data, so nothing is
+  // hidden — it just does not become clinical history.
   const diagnosisRows = data.diagnoses
     .map((d) => {
       const condition = clamp(d.condition, 500);
       if (!condition) return null;
+
+      const assertionStatus = d.assertionStatus ?? 'present';
+      if (!belongsToPatient(assertionStatus)) return null;
+
+      // The linked concept's name is stored alongside the verbatim reading so the
+      // vault can filter by disease: "DM type II" and "T2DM" must select the same
+      // records. The document the patient uploaded still shows its own wording.
+      const link = linkCondition(condition);
+
       return {
         documentId,
         userId,
         condition,
-        icd10Code: clamp(d.icd10Code, 50),
+        canonicalCondition: clamp(link?.concept.canonical ?? condition, 500),
+        icd10Code: clamp(d.icd10Code ?? link?.concept.icd10, 50),
         severity: clamp(d.severity, 100),
         notes: d.notes ?? null,
+        assertionStatus,
         diagnosedDate: safeDate(d.diagnosedDate),
       };
     })
@@ -378,6 +394,12 @@ function buildEntityRows(
     .map((a) => {
       const allergen = clamp(a.allergen, 500);
       if (!allergen) return null;
+
+      // "No known drug allergies" is on virtually every discharge summary, and reading
+      // it as an allergy to drugs is the inverse of a safety feature.
+      const assertionStatus = a.assertionStatus ?? 'present';
+      if (!belongsToPatient(assertionStatus)) return null;
+
       return {
         documentId,
         userId,
@@ -385,6 +407,7 @@ function buildEntityRows(
         allergyType: clamp(a.allergyType, 100),
         severity: clamp(a.severity, 100),
         reaction: a.reaction ?? null,
+        assertionStatus,
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
@@ -403,11 +426,7 @@ async function rebuildDerivedData(
   userId: string,
   data: ValidatedExtraction,
   fallbackDate: Date,
-  options: {
-    includeImaging: boolean;
-    insertEntities: boolean;
-    imagingRows: Array<typeof imagingFindings.$inferInsert>;
-  }
+  options: { insertEntities: boolean }
 ): Promise<void> {
   const { medicationRows, diagnosisRows, labResultRows, allergyRows } = buildEntityRows(
     documentId,
@@ -422,14 +441,6 @@ async function rebuildDerivedData(
     await tx.delete(diagnoses).where(eq(diagnoses.documentId, documentId));
     await tx.delete(labResults).where(eq(labResults.documentId, documentId));
     await tx.delete(allergies).where(eq(allergies.documentId, documentId));
-
-    if (options.includeImaging) {
-      await tx.delete(imagingFindings).where(eq(imagingFindings.documentId, documentId));
-    }
-
-    if (options.imagingRows.length > 0) {
-      await tx.insert(imagingFindings).values(options.imagingRows);
-    }
 
     if (!options.insertEntities) return;
 
@@ -512,7 +523,7 @@ export async function processDocument(documentId: string, userId: string): Promi
     // transaction once the new set is ready, so a failure part-way leaves the
     // previous good extraction in place rather than an empty record.
     const buffer = await getStorage().read(doc.storagePath);
-    const extraction = await extractText(buffer, doc.mimeType, doc.documentType);
+    const extraction = await extractText(buffer, doc.mimeType);
     const text = extraction.text.trim();
     const confidence = extraction.confidence ?? null;
 
@@ -526,6 +537,7 @@ export async function processDocument(documentId: string, userId: string): Promi
           extractionConfidence: confidence,
           extractionNotes:
             'No readable text could be extracted from this file. Try uploading a sharper photo or scan.',
+          processingStartedAt: null,
           updatedAt: new Date(),
         })
         .where(eq(documents.id, documentId));
@@ -561,6 +573,7 @@ export async function processDocument(documentId: string, userId: string): Promi
       .where(eq(documents.id, documentId));
 
     const notes: string[] = [...reconciliation.notes];
+
     const lowConfidence = confidence !== null && confidence < LOW_CONFIDENCE_THRESHOLD;
 
     if (lowConfidence) {
@@ -569,34 +582,9 @@ export async function processDocument(documentId: string, userId: string): Promi
       );
     }
 
-    // Findings come from the chest X-ray classifier, already validated and worded by
-    // services/radiology/validator — the vision LLM no longer produces any of them.
-    const imagingRows = (extraction.radiologyFindings ?? []).map((f) => ({
-      documentId,
-      userId,
-      bodyPart: clamp(f.bodyPart, 200) ?? 'chest',
-      modality: doc.documentType === 'imaging_report' ? 'x-ray' : null,
-      finding: f.finding,
-      location: clamp(f.location ?? undefined, 300),
-      severity: clamp(f.severity, 100),
-      description: f.description,
-      aiConfidence: Math.round(f.confidence),
-      urgencyLevel: f.urgencyLevel,
-      validationNotes: f.validationNotes,
-      validated: f.validated,
-    }));
-
-    // What the model did and did not check is stated on the document either way —
-    // silence must never read to a patient as "your X-ray is clear".
-    if (extraction.classification) {
-      notes.push(buildImagingNote(extraction.classification));
-    }
-
     // One transaction swaps the old derived rows for the new ones.
     await rebuildDerivedData(documentId, userId, structured, documentDate ?? new Date(), {
-      includeImaging: true,
       insertEntities: !lowConfidence,
-      imagingRows,
     });
 
     const chunks = chunkDocument(text, {
@@ -675,9 +663,7 @@ export async function applyConfirmedExtraction(
   await rebuildDerivedData(documentId, userId, structured, doc.documentDate ?? new Date(), {
     // Imaging findings come from the vision pass, not from the confirmed text, so
     // they are left alone here.
-    includeImaging: false,
     insertEntities: true,
-    imagingRows: [],
   });
 
   if (!text) return;
