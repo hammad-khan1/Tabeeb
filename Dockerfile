@@ -39,6 +39,10 @@ RUN npm run build
 FROM node:22-slim AS runner
 WORKDIR /app
 
+# PORT is a default, not a fixed value: hosting platforms inject their own and the
+# standalone server reads process.env.PORT, so an injected value wins. HOSTNAME must
+# be 0.0.0.0 — binding to localhost inside a container makes it unreachable, which
+# presents as a health check that never passes.
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
