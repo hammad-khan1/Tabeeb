@@ -61,11 +61,14 @@ const concepts: Record<string, DrugConcept> = {
 };
 
 vi.mock('./rxnav-client', () => ({
-  resolveDrugConcepts: (names: string[]) =>
+  // Accepts both shapes: current medications are now passed as { name, rxcui } so the
+  // stored RxNorm id can skip a network lookup, while queried items stay plain names.
+  resolveDrugConcepts: (input: Array<string | { name: string; rxcui?: string | null }>) =>
     Promise.resolve(
-      names.map(
-        (n) => concepts[n] ?? { query: n, rxcui: null, ingredients: [], classes: [] }
-      )
+      input.map((item) => {
+        const name = typeof item === 'string' ? item : item.name;
+        return concepts[name] ?? { query: name, rxcui: null, ingredients: [], classes: [] };
+      })
     ),
 }));
 
@@ -107,12 +110,18 @@ const inserted: unknown[] = [];
 
 vi.mock('@/lib/db', () => ({
   getDb: () => ({
-    select: (cols: Record<string, unknown>) => ({
-      from: () => ({
-        where: () =>
-          Promise.resolve('allergen' in cols ? PROFILE.allergies : PROFILE.medications),
-      }),
-    }),
+    // Fluent through every builder method: terminating at `where` meant that adding
+    // an orderBy and a limit to the production query broke tests about allergies.
+    select: (cols: Record<string, unknown>) => {
+      const rows = 'allergen' in cols ? PROFILE.allergies : PROFILE.medications;
+      const chain: Record<string, unknown> = {};
+      for (const method of ['from', 'where', 'orderBy', 'limit', 'offset']) {
+        chain[method] = () => chain;
+      }
+      chain.then = (resolve: (value: unknown[]) => unknown) =>
+        Promise.resolve(rows).then(resolve);
+      return chain;
+    },
     insert: () => ({ values: (v: unknown) => { inserted.push(v); return Promise.resolve(); } }),
   }),
 }));
