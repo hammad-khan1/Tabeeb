@@ -37,7 +37,6 @@ Built with **Next.js 16 (App Router)**, **TypeScript**, **Drizzle ORM + PostgreS
 - **Health insights digest** — periodically reviews a user's documents and generates a prioritized digest of findings.
 - **Voice entries** — record a voice note, transcribed (Whisper via Groq) and structured into a document-like entry.
 - **Shareable history** — generate expiring, read-only share links summarizing a user's medical history (e.g., for a new doctor).
-- **X-ray screening** — X-ray *images* are scored by a purpose-trained chest classifier (torchxrayvision `densenet121-res224-all`, exported to ONNX and run **in-process in ~40ms** — no service to deploy, and the image never leaves the server). It returns a probability per pathology across 18 labels including fracture, mass, nodule, infiltration and pneumothorax; findings are derived from those numbers and a fixed clinical table, never generated. Radiographs are detected from the image itself, so screening does not depend on the user picking the right document type. When the model fails to discriminate — the normal outcome for a photo of a film on a lightbox — the app says so instead of reporting findings. Imaging *reports* (text) are read as written. Screening only, never a diagnosis, and nothing is marked clinically validated.
 - **Bilingual UI** — English and Urdu (Noto Nastaliq Urdu font) support baked into fonts/layout and language-aware summarization.
 
 ## Architecture Overview
@@ -227,10 +226,9 @@ Create a `.env.local` file with:
 | `DATABASE_URL` | PostgreSQL connection string (`src/lib/db.ts`, `drizzle.config.ts`) |
 | `GROQ_API_KEY` | Groq API access for extraction, vision OCR, chat, and Whisper transcription (`src/lib/groq.ts`) |
 | `PINECONE_API_KEY` | Pinecone embedding API for document/query embeddings (`src/lib/embeddings.ts`) |
-| `HF_API_KEY` | *(optional)* Hugging Face Inference API, used by the `d4data/biomedical-ner-all` NER backend (`src/services/nlp/medical-ner.ts`; a deterministic pattern-based NER still runs without it) and by the X-ray classifier |
+| `HF_API_KEY` | *(optional)* Hugging Face Inference API, used by the `d4data/biomedical-ner-all` NER backend (`src/services/nlp/medical-ner.ts`; a deterministic pattern-based NER still runs without it) |
 | `NEXT_PUBLIC_APP_URL` | Public base URL, used when constructing share links |
 | `UPLOAD_DIR` | *(optional)* Where uploaded files are stored, default `./.data/uploads`. **Must not be inside `./public`** — Next serves that tree with no authentication (`src/lib/env.ts`) |
-| `RADIOLOGY_CLASSIFIER_URL` | *(optional)* HuggingFace Inference Endpoint serving a chest X-ray multi-label classifier. Without it, X-ray images are not analysed (`src/services/radiology/classifier.ts`) |
 | `GROQ_VISION_MODEL` / `GROQ_PRIMARY_MODEL` / `GROQ_FAST_MODEL` / `GROQ_WHISPER_MODEL` | *(optional)* Pin a model id without a code change |
 | Clerk keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, etc.) | Authentication via `@clerk/nextjs` — standard Clerk Next.js setup |
 
@@ -258,24 +256,9 @@ configuration; `0002` adds `assertion_status` to `diagnoses` and `allergies`. If
 regenerate migrations, carry those statements forward.
 
 Tests (179) cover the clinical value and reference-range parsing, the lab analyte
-catalogue, medical NER, reconciliation, drug/allergy interaction logic, X-ray
-finding construction, storage path handling, request validation, rate limiting,
+catalogue, medical NER, reconciliation, drug/allergy interaction logic, storage path handling, request validation, rate limiting,
 model-failure classification, and share-link scoping.
 
-## Image capture
-
-X-rays reach this app as photographs of films, not DICOM. That is workable — qXR, a
-cleared chest X-ray product, was evaluated on smartphone photographs of films against
-the digital originals (JMIR Formative Research 2024, n=1,278) and the difference in
-positive and negative agreement was not statistically significant. A photographed
-film is a legitimate input, provided it is photographed well.
-
-What breaks it is the delivery path. Every X-ray uploaded during development arrived
-via WhatsApp at 720px on the long edge — roughly a tenth of the pixels the phone's
-camera captured, and far below the 1440x1440 a cleared product requires. So the
-uploader offers a **Take Photo** control that opens the camera directly at full
-resolution, carries the capture protocol from that study, and the pipeline tells the
-patient when an X-ray is too small to read rather than analysing it silently.
 
 ## Deploying
 

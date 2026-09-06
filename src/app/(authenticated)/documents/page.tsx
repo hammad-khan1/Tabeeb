@@ -55,12 +55,14 @@ function formatDate(dateStr: string) {
 export default function DocumentsPage() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [hospitalFilter, setHospitalFilter] = useState("");
+  const [conditionFilter, setConditionFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
   const filters = {
     type: typeFilter !== "all" ? typeFilter : undefined,
     hospital: hospitalFilter || undefined,
+    condition: conditionFilter || undefined,
     from: dateFrom || undefined,
     to: dateTo || undefined,
   };
@@ -114,6 +116,30 @@ export default function DocumentsPage() {
                 placeholder="Search hospital..."
                 value={hospitalFilter}
                 onChange={(e) => setHospitalFilter(e.target.value)}
+                className="ps-8"
+              />
+            </div>
+          </div>
+          {/* Filtering by disease is the vault's point: every diabetes record from
+              every hospital, without remembering which visit produced which report.
+              Matched on the linked concept, so "T2DM" and "شوگر" find the same ones. */}
+          <div className="min-w-[160px] flex-1">
+            <label
+              className="mb-1 block text-xs font-medium text-muted-foreground"
+              htmlFor="condition-filter"
+            >
+              Condition
+            </label>
+            <div className="relative">
+              <Stethoscope
+                className="absolute start-2.5 top-2.5 size-3.5 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                id="condition-filter"
+                placeholder="e.g. diabetes"
+                value={conditionFilter}
+                onChange={(e) => setConditionFilter(e.target.value)}
                 className="ps-8"
               />
             </div>

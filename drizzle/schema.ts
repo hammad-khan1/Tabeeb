@@ -107,6 +107,12 @@ export const diagnoses = pgTable('diagnoses', {
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
   userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   condition: varchar('condition', { length: 500 }).notNull(),
+  /**
+   * The linked concept's canonical name, so "DM type II", "T2DM" and "شوگر" all group
+   * and filter as one disease. Stored rather than resolved at query time because SQL
+   * cannot run the linker — the same reason lab_results carries canonicalTestName.
+   */
+  canonicalCondition: varchar('canonical_condition', { length: 500 }),
   icd10Code: varchar('icd10_code', { length: 50 }),
   severity: varchar('severity', { length: 100 }),
   notes: text('notes'),
@@ -119,6 +125,7 @@ export const diagnoses = pgTable('diagnoses', {
 }, (table) => [
   index('diagnoses_user_id_idx').on(table.userId),
   index('diagnoses_user_date_idx').on(table.userId, table.diagnosedDate.desc()),
+  index('diagnoses_user_canonical_idx').on(table.userId, table.canonicalCondition),
 ]);
 
 export const labResults = pgTable('lab_results', {
@@ -210,25 +217,4 @@ export const chatMessages = pgTable('chat_messages', {
 }, (table) => [
   index('chat_messages_user_conv_idx').on(table.userId, table.conversationId),
   index('chat_messages_created_idx').on(table.createdAt),
-]);
-
-export const imagingFindings = pgTable('imaging_findings', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
-  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
-  bodyPart: varchar('body_part', { length: 200 }).notNull(),
-  modality: varchar('modality', { length: 100 }),
-  finding: text('finding').notNull(),
-  location: varchar('location', { length: 300 }),
-  severity: varchar('severity', { length: 100 }),
-  description: text('description'),
-  aiConfidence: integer('ai_confidence'),
-  urgencyLevel: varchar('urgency_level', { length: 50 }),
-  validationNotes: text('validation_notes'),
-  validated: boolean('validated').default(false),
-  createdAt: timestamp('created_at').defaultNow(),
-}, (table) => [
-  index('imaging_findings_user_idx').on(table.userId),
-  index('imaging_findings_user_created_idx').on(table.userId, table.createdAt.desc()),
-  index('imaging_findings_doc_idx').on(table.documentId),
 ]);

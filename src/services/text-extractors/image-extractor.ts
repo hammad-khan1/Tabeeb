@@ -5,30 +5,12 @@ import {
   enhanceForHandwriting,
   type NormalizedImage,
 } from './image-normalizer';
-import { resolveRadiologyClassifier, type ClassificationResult } from '@/services/radiology/classifier';
-import { detectRadiograph } from '@/services/radiology/detect-radiograph';
-import { buildFindings, type ValidatedFinding } from '@/services/radiology/validator';
-import { describeRadiograph, type RadiographDescription } from '@/services/radiology/medgemma-describer';
 
-/**
- * Findings now come from `services/radiology/classifier`, a purpose-trained chest
- * X-ray model — not from the vision LLM. See that file for why.
- */
-export type { ValidatedFinding as RadiologyFinding } from '@/services/radiology/validator';
 
 export interface ImageExtractionResult {
   text: string;
   confidence: number;
   isHandwritten: boolean;
-  radiologyFindings?: ValidatedFinding[];
-  /** Raw classifier output, so the caller can report what was and was not checked. */
-  classification?: ClassificationResult;
-  /** True when the image looked like a radiograph but was not filed as one. */
-  detectedAsRadiograph?: boolean;
-  /** Plain-language account of the image, for body parts the classifier cannot score. */
-  radiographDescription?: RadiographDescription;
-  /** Set when the radiograph is too small for the models to read reliably. */
-  lowResolution?: { width: number; height: number };
 }
 
 const VISION_MAX_TOKENS = 8192;
@@ -220,99 +202,16 @@ export async function ocrImage(buffer: Buffer, mimeType: string): Promise<OcrPas
   return refineHandwriting(buffer, mimeType, first);
 }
 
-/**
- * Runs the chest X-ray classifier over the image.
- *
- * This used to prompt the general-purpose vision LLM as "a board-certified radiologist
- * AI performing clinical-grade analysis" and take whatever it produced. A general VLM
- * cannot detect a pneumothorax or a fracture; it produced fluent, unfounded findings
- * that were stored as clinical data. Detection is now the classifier's job, and when
- * none is configured no findings are produced at all.
- */
-async function classifyRadiologyImage(
-  buffer: Buffer,
-  mimeType: string
-): Promise<{
-  findings: ValidatedFinding[];
-  classification?: ClassificationResult;
-  description?: RadiographDescription;
-}> {
-  const normalized = await normalizeForVision(buffer, mimeType);
-  const classifier = await resolveRadiologyClassifier();
-
-  // Describe first. The description reports the body region, which decides both
-  // whether this is a radiograph at all and whether the chest classifier may run —
-  // the tone heuristic upstream is deliberately loose, so the model is the authority.
-  const description = await describeRadiograph(normalized.buffer);
-
-  // The heuristic said radiograph; the model says otherwise. Trust the model and
-  // produce nothing, so a dark photograph of a prescription is not written up as an
-  // X-ray that could not be screened.
-  if (description.bodyRegion === 'not an x-ray') {
-    return { findings: [], classification: undefined, description: undefined };
-  }
-
-  // The chest classifier scores chest pathologies on whatever pixels it is given. Run
-  // unguarded it reported pneumonia at 73% on a photograph of a leg — confident,
-  // structured and entirely fabricated. It only runs when the image is a chest.
-  if (description.bodyRegion !== 'chest') {
-    return {
-      findings: [],
-      classification: {
-        scores: [],
-        flagged: [],
-        modelId: classifier.modelId,
-        unavailableReason:
-          description.bodyRegion === 'unknown'
-            ? 'The screening model only reads chest X-rays, and the part of the body in this image could not be identified, so no screening was performed.'
-            : `The screening model only reads chest X-rays, and this appears to be a ${description.bodyRegion} X-ray, so no screening was performed.`,
-      },
-      description,
-    };
-  }
-
-  const classification = await classifier.classify(normalized.buffer, normalized.mimeType);
-  return { findings: buildFindings(classification), classification, description };
-}
-
 export async function extractFromImage(
   buffer: Buffer,
-  mimeType: string,
-  documentType?: string
+  mimeType: string
 ): Promise<ImageExtractionResult> {
   const ocr = await ocrImage(buffer, mimeType);
 
-  const result: ImageExtractionResult = {
+  return {
     text: ocr.text,
     confidence: ocr.confidence,
     isHandwritten: ocr.isHandwritten,
   };
-
-  // Screening runs when the document is filed as imaging OR when the image itself
-  // looks like a radiograph. The upload form defaults to "Other" and users do not
-  // change it, so relying on the dropdown alone meant X-rays were never analysed —
-  // they just had their burned-in study label read back by OCR.
-  //
-  // Detection only ever *adds* this pass. Text extraction above always runs, so a
-  // document misjudged as a film still gets its medications extracted.
-  const filedAsImaging = documentType === 'imaging_report';
-  const detection = filedAsImaging ? null : await detectRadiograph(buffer);
-
-  if (filedAsImaging || detection?.isRadiograph) {
-    const { findings, classification, description } = await classifyRadiologyImage(buffer, mimeType);
-    if (description) {
-      result.radiologyFindings = findings;
-      result.classification = classification;
-      result.radiographDescription = description;
-      result.detectedAsRadiograph = !filedAsImaging;
-      if (detection?.belowUsefulResolution) {
-        result.lowResolution = {
-          width: detection.stats.width,
-          height: detection.stats.height,
-        };
-      }
-    }
-  }
-
-  return result;
 }
+

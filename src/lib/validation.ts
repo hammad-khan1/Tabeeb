@@ -53,6 +53,12 @@ export const updateDocumentSchema = z
 export const listDocumentsSchema = z.object({
   type: documentTypeSchema.optional(),
   hospital: z.string().trim().max(500).optional(),
+  /**
+   * Filters to documents carrying a diagnosis of this condition. Matched on the
+   * canonical concept where one was linked, so "DM type II", "T2DM" and "شوگر" all
+   * select the same records — which is the point of the filter.
+   */
+  condition: z.string().trim().min(1).max(200).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
   search: z.string().trim().min(1).max(200).optional(),

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, desc, and, gte, lte, ilike, or, sql } from 'drizzle-orm';
+import { eq, desc, and, gte, lte, ilike, or, sql, exists } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
 import { errorResponse, badRequest } from '@/lib/api-error';
 import { consume } from '@/lib/rate-limit';
+import { canonicalConditionName } from '@/services/nlp/condition-linker';
 import { getStorage } from '@/lib/storage';
 import {
   createDocumentFieldsSchema,
@@ -13,7 +14,7 @@ import {
   validateUploadFile,
 } from '@/lib/validation';
 import { enqueueProcessing, maybeSweepStalledDocuments } from '@/services/processing-queue';
-import { documents } from '../../../../drizzle/schema';
+import { documents, diagnoses } from '../../../../drizzle/schema';
 
 /** OCR of a many-page scan is slow; give the platform room before it kills the request. */
 export const maxDuration = 300;
@@ -120,6 +121,36 @@ export async function GET(request: NextRequest) {
         ilike(documents.rawExtractedText, pattern)
       );
       if (clause) conditions.push(clause);
+    }
+
+    // The document vault filters by condition, not just by type and hospital: a
+    // patient managing diabetes wants every diabetes record across every hospital
+    // without remembering which visit produced which report.
+    //
+    // Matched on the canonical concept so the same disease written five ways — "DM
+    // type II", "T2DM", "شوگر" — selects the same documents. Falls back to the
+    // verbatim text when the term links to no known concept.
+    if (query.condition) {
+      const canonical = canonicalConditionName(query.condition);
+      conditions.push(
+        exists(
+          getDb()
+            .select({ one: sql`1` })
+            .from(diagnoses)
+            .where(
+              and(
+                eq(diagnoses.documentId, documents.id),
+                or(
+                  // The canonical column is what makes synonyms collapse; the
+                  // verbatim column catches records written before linking, and
+                  // conditions the linker does not know.
+                  ilike(diagnoses.canonicalCondition, `%${escapeLikePattern(canonical)}%`),
+                  ilike(diagnoses.condition, `%${escapeLikePattern(query.condition)}%`)
+                )
+              )
+            )
+        )
+      );
     }
 
     const where = and(...conditions);

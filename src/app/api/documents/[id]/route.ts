@@ -6,7 +6,7 @@ import { consume } from '@/lib/rate-limit';
 import { errorResponse, notFound } from '@/lib/api-error';
 import { getStorage } from '@/lib/storage';
 import { parseJsonBody, parseOrThrow, updateDocumentSchema, uuidParamSchema } from '@/lib/validation';
-import { documents, imagingFindings } from '../../../../../drizzle/schema';
+import { documents } from '../../../../../drizzle/schema';
 
 export async function GET(
   request: NextRequest,
@@ -25,15 +25,6 @@ export async function GET(
 
     if (!doc) throw notFound('Document not found');
 
-    const findings =
-      doc.documentType === 'imaging_report'
-        ? await getDb()
-            .select()
-            .from(imagingFindings)
-            .where(eq(imagingFindings.documentId, id))
-            .orderBy(imagingFindings.createdAt)
-        : [];
-
     // storagePath is an internal filesystem path; the file is fetched from
     // /api/documents/[id]/file, which re-checks ownership.
     const { storagePath: _storagePath, ...safe } = doc;
@@ -41,7 +32,6 @@ export async function GET(
     return NextResponse.json({
       ...safe,
       fileUrl: `/api/documents/${id}/file`,
-      imagingFindings: findings,
     });
   } catch (error) {
     return errorResponse('GET /api/documents/[id]', error, 'Failed to fetch document');

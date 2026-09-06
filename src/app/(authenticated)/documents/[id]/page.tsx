@@ -46,19 +46,6 @@ import { DOCUMENT_TYPE_LABELS } from "@/lib/constants";
 import { useDocument } from "@/hooks/use-documents";
 import type { Medication, Diagnosis, LabResult, Allergy } from "@/types/medical";
 
-interface ImagingFinding {
-  id: string;
-  bodyPart: string;
-  modality: string | null;
-  finding: string;
-  location: string | null;
-  severity: string | null;
-  description: string | null;
-  aiConfidence: number | null;
-  urgencyLevel: string | null;
-  validationNotes: string | null;
-  validated: boolean;
-}
 
 const typeIcons: Record<string, React.ElementType> = {
   prescription: FilePlus,
@@ -146,8 +133,6 @@ export default function DocumentDetailPage() {
     allergies?: Allergy[];
   } | null;
 
-  const imagingFindingsList = (doc as unknown as { imagingFindings?: ImagingFinding[] }).imagingFindings ?? [];
-  const isImagingDoc = doc.documentType === "imaging_report";
 
   const Icon = typeIcons[doc.documentType] ?? FileText;
   const needsReview = doc.extractionStatus === "needs_review";
@@ -403,14 +388,9 @@ export default function DocumentDetailPage() {
                   </p>
                 </div>
               ) : (
-                <Tabs defaultValue={isImagingDoc ? "imaging" : "medications"}>
-                  <TabsList className={`grid w-full ${isImagingDoc ? "grid-cols-5" : "grid-cols-4"}`}>
-                    {isImagingDoc && (
-                      <TabsTrigger value="imaging" className="text-xs">
-                        Imaging
-                      </TabsTrigger>
-                    )}
-                    <TabsTrigger value="medications" className="text-xs">
+                <Tabs defaultValue="medications">
+                  <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="medications" className="text-xs">
                       Meds
                     </TabsTrigger>
                     <TabsTrigger value="diagnoses" className="text-xs">
@@ -423,71 +403,6 @@ export default function DocumentDetailPage() {
                       Allergies
                     </TabsTrigger>
                   </TabsList>
-
-                  {isImagingDoc && (
-                    <TabsContent value="imaging" className="mt-4 space-y-3">
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                        <AlertTriangle className="me-1.5 inline size-3.5" aria-hidden="true" />
-                        AI-assisted analysis only. Not a substitute for professional radiological interpretation.
-                      </div>
-                      {imagingFindingsList.length > 0 ? (
-                        <div className="space-y-2">
-                          {imagingFindingsList.map((f) => (
-                            <div
-                              key={f.id}
-                              className={`rounded-lg border p-3 ${
-                                f.urgencyLevel === "critical" || f.urgencyLevel === "urgent"
-                                  ? "border-red-200 bg-red-50"
-                                  : ""
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium">{f.finding}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {[f.bodyPart, f.location].filter(Boolean).join(" — ")}
-                                  </p>
-                                  {f.description && (
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                      {f.description}
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1">
-                                  {f.severity && (
-                                    <Badge
-                                      variant={
-                                        f.severity === "critical" || f.severity === "severe"
-                                          ? "destructive"
-                                          : "secondary"
-                                      }
-                                      className="text-[10px]"
-                                    >
-                                      {f.severity}
-                                    </Badge>
-                                  )}
-                                  {f.aiConfidence !== null && (
-                                    <span className="text-[10px] text-muted-foreground">
-                                      {f.aiConfidence}% conf.
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              {f.validationNotes && (
-                                <p className="mt-2 text-[10px] text-muted-foreground italic">
-                                  {f.validationNotes}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-center text-sm text-muted-foreground">
-                          No imaging findings detected.
-                        </p>
-                      )}
-                    </TabsContent>
-                  )}
 
                   <TabsContent value="medications" className="mt-4">
                     {structured.medications && structured.medications.length > 0 ? (

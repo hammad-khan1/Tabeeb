@@ -8,14 +8,11 @@ import {
   diagnoses,
   labResults,
   allergies,
-  imagingFindings,
 } from '../../drizzle/schema';
 import { getStorage } from '@/lib/storage';
 import { getGroq, MODELS } from '@/lib/groq';
 import { embeddingProvider } from '@/lib/embeddings';
 import { extractText } from '@/services/text-extractors';
-import { buildImagingNote, buildResolutionNote } from '@/services/radiology/validator';
-import { buildDescriptionNote } from '@/services/radiology/medgemma-describer';
 import {
   parseStructuredExtraction,
   isExtractionEmpty,
@@ -25,6 +22,7 @@ import {
 } from '@/services/extraction-schema';
 import { reconcileExtraction } from '@/services/nlp/reconciler';
 import { belongsToPatient } from '@/services/nlp/assertion';
+import { linkCondition } from '@/services/nlp/condition-linker';
 import { canonicalizeLab } from '@/services/nlp/lab-normalizer';
 import { parseMedicalValue, isOutOfRange } from '@/lib/medical-values';
 import { generateDocumentSummary } from '@/services/summarizer';
@@ -339,11 +337,17 @@ function buildEntityRows(
       const assertionStatus = d.assertionStatus ?? 'present';
       if (!belongsToPatient(assertionStatus)) return null;
 
+      // The linked concept's name is stored alongside the verbatim reading so the
+      // vault can filter by disease: "DM type II" and "T2DM" must select the same
+      // records. The document the patient uploaded still shows its own wording.
+      const link = linkCondition(condition);
+
       return {
         documentId,
         userId,
         condition,
-        icd10Code: clamp(d.icd10Code, 50),
+        canonicalCondition: clamp(link?.concept.canonical ?? condition, 500),
+        icd10Code: clamp(d.icd10Code ?? link?.concept.icd10, 50),
         severity: clamp(d.severity, 100),
         notes: d.notes ?? null,
         assertionStatus,
@@ -422,11 +426,7 @@ async function rebuildDerivedData(
   userId: string,
   data: ValidatedExtraction,
   fallbackDate: Date,
-  options: {
-    includeImaging: boolean;
-    insertEntities: boolean;
-    imagingRows: Array<typeof imagingFindings.$inferInsert>;
-  }
+  options: { insertEntities: boolean }
 ): Promise<void> {
   const { medicationRows, diagnosisRows, labResultRows, allergyRows } = buildEntityRows(
     documentId,
@@ -441,14 +441,6 @@ async function rebuildDerivedData(
     await tx.delete(diagnoses).where(eq(diagnoses.documentId, documentId));
     await tx.delete(labResults).where(eq(labResults.documentId, documentId));
     await tx.delete(allergies).where(eq(allergies.documentId, documentId));
-
-    if (options.includeImaging) {
-      await tx.delete(imagingFindings).where(eq(imagingFindings.documentId, documentId));
-    }
-
-    if (options.imagingRows.length > 0) {
-      await tx.insert(imagingFindings).values(options.imagingRows);
-    }
 
     if (!options.insertEntities) return;
 
@@ -501,11 +493,6 @@ async function getPreferredLanguage(userId: string): Promise<'en' | 'ur' | 'mixe
   return row?.preferredLanguage ?? null;
 }
 
-/** An empty extraction, for image-only documents that have no text to parse. */
-function structuredExtractionFallback(): ValidatedExtraction {
-  return parseStructuredExtraction({});
-}
-
 async function loadOwnedDocument(documentId: string, userId: string) {
   const [doc] = await getDb()
     .select()
@@ -536,20 +523,11 @@ export async function processDocument(documentId: string, userId: string): Promi
     // transaction once the new set is ready, so a failure part-way leaves the
     // previous good extraction in place rather than an empty record.
     const buffer = await getStorage().read(doc.storagePath);
-    const extraction = await extractText(buffer, doc.mimeType, doc.documentType);
+    const extraction = await extractText(buffer, doc.mimeType);
     const text = extraction.text.trim();
     const confidence = extraction.confidence ?? null;
 
-    // An X-ray usually carries no text at all, so "no text" is not a failure for one —
-    // and returning here threw away the image analysis that had already been computed
-    // a few lines above. That is why a clean radiograph came back saying only "no
-    // readable text could be extracted".
-    const hasImageAnalysis = Boolean(
-      extraction.radiographDescription?.description ||
-        (extraction.radiologyFindings && extraction.radiologyFindings.length > 0)
-    );
-
-    if (!text && !hasImageAnalysis) {
+    if (!text) {
       await getDb()
         .update(documents)
         .set({
@@ -559,51 +537,6 @@ export async function processDocument(documentId: string, userId: string): Promi
           extractionConfidence: confidence,
           extractionNotes:
             'No readable text could be extracted from this file. Try uploading a sharper photo or scan.',
-          updatedAt: new Date(),
-        })
-        .where(eq(documents.id, documentId));
-      return;
-    }
-
-    if (!text && hasImageAnalysis) {
-      // Nothing to extract entities from or embed, but the image itself was read.
-      const imageNotes = [
-        buildDescriptionNote(extraction.radiographDescription!) ?? '',
-        extraction.classification ? buildImagingNote(extraction.classification) : '',
-        extraction.lowResolution
-          ? buildResolutionNote(extraction.lowResolution.width, extraction.lowResolution.height)
-          : '',
-      ].filter(Boolean);
-
-      const imagingRows = (extraction.radiologyFindings ?? []).map((f) => ({
-        documentId,
-        userId,
-        bodyPart: clamp(f.bodyPart, 200) ?? 'unknown',
-        modality: 'x-ray',
-        finding: f.finding,
-        location: clamp(f.location ?? undefined, 300),
-        severity: clamp(f.severity, 100),
-        description: f.description,
-        aiConfidence: Math.round(f.confidence),
-        urgencyLevel: f.urgencyLevel,
-        validationNotes: f.validationNotes,
-        validated: f.validated,
-      }));
-
-      await rebuildDerivedData(documentId, userId, structuredExtractionFallback(), new Date(), {
-        includeImaging: true,
-        insertEntities: false,
-        imagingRows,
-      });
-
-      await getDb()
-        .update(documents)
-        .set({
-          documentType: 'imaging_report',
-          extractionStatus: 'confirmed',
-          rawExtractedText: '',
-          extractionConfidence: confidence,
-          extractionNotes: imageNotes.join('\n\n'),
           processingStartedAt: null,
           updatedAt: new Date(),
         })
@@ -641,18 +574,6 @@ export async function processDocument(documentId: string, userId: string): Promi
 
     const notes: string[] = [...reconciliation.notes];
 
-    // An image that looks like a radiograph is refiled as one, so it shows the right
-    // icon, appears under imaging, and is screened on any future reprocess without
-    // the user having to know about the type dropdown.
-    if (extraction.detectedAsRadiograph) {
-      await getDb()
-        .update(documents)
-        .set({ documentType: 'imaging_report', updatedAt: new Date() })
-        .where(eq(documents.id, documentId));
-      notes.push(
-        'This looked like an X-ray or scan rather than a paper document, so it was filed as an imaging report and checked by the screening model.'
-      );
-    }
     const lowConfidence = confidence !== null && confidence < LOW_CONFIDENCE_THRESHOLD;
 
     if (lowConfidence) {
@@ -661,48 +582,9 @@ export async function processDocument(documentId: string, userId: string): Promi
       );
     }
 
-    // Findings come from the chest X-ray classifier, already validated and worded by
-    // services/radiology/validator — the vision LLM no longer produces any of them.
-    const imagingRows = (extraction.radiologyFindings ?? []).map((f) => ({
-      documentId,
-      userId,
-      bodyPart: clamp(f.bodyPart, 200) ?? 'chest',
-      modality: doc.documentType === 'imaging_report' ? 'x-ray' : null,
-      finding: f.finding,
-      location: clamp(f.location ?? undefined, 300),
-      severity: clamp(f.severity, 100),
-      description: f.description,
-      aiConfidence: Math.round(f.confidence),
-      urgencyLevel: f.urgencyLevel,
-      validationNotes: f.validationNotes,
-      validated: f.validated,
-    }));
-
-    // What the model did and did not check is stated on the document either way —
-    // silence must never read to a patient as "your X-ray is clear".
-    //
-    // The chest classifier only speaks to chest films. When it could not score the
-    // image but MedGemma described it, the description is what carries the value, so
-    // the classifier's "could not assess" is not repeated on top of it.
-    const descriptionNote = extraction.radiographDescription
-      ? buildDescriptionNote(extraction.radiographDescription)
-      : null;
-
-    if (descriptionNote) notes.push(descriptionNote);
-    if (extraction.lowResolution) {
-      notes.push(
-        buildResolutionNote(extraction.lowResolution.width, extraction.lowResolution.height)
-      );
-    }
-    if (extraction.classification && !(descriptionNote && extraction.classification.unavailableReason)) {
-      notes.push(buildImagingNote(extraction.classification));
-    }
-
     // One transaction swaps the old derived rows for the new ones.
     await rebuildDerivedData(documentId, userId, structured, documentDate ?? new Date(), {
-      includeImaging: true,
       insertEntities: !lowConfidence,
-      imagingRows,
     });
 
     const chunks = chunkDocument(text, {
@@ -713,20 +595,14 @@ export async function processDocument(documentId: string, userId: string): Promi
 
     await embedAndStoreChunks(documentId, userId, chunks);
 
-    const isImaging =
-      doc.documentType === 'imaging_report' || extraction.detectedAsRadiograph === true;
-
-    // "No medical entities were identified" is the wrong message for an X-ray: a film
-    // carries a study label, not a medication list, so an empty extraction is the
-    // expected result rather than something for the patient to go and check.
-    if (isExtractionEmpty(structured) && !isImaging) {
+    if (isExtractionEmpty(structured)) {
       notes.push('No medical entities were identified in this document — please review the extracted text.');
     }
     if (extraction.isHandwritten) {
       notes.push('Handwritten content detected — please verify drug names and numbers against the original.');
     }
 
-    const needsReview = lowConfidence || (isExtractionEmpty(structured) && !isImaging);
+    const needsReview = lowConfidence || isExtractionEmpty(structured);
 
     const summary = await generateDocumentSummary({
       text,
@@ -787,9 +663,7 @@ export async function applyConfirmedExtraction(
   await rebuildDerivedData(documentId, userId, structured, doc.documentDate ?? new Date(), {
     // Imaging findings come from the vision pass, not from the confirmed text, so
     // they are left alone here.
-    includeImaging: false,
     insertEntities: true,
-    imagingRows: [],
   });
 
   if (!text) return;

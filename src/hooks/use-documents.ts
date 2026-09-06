@@ -6,6 +6,8 @@ import { useCallback } from "react";
 interface DocumentFilters {
   type?: string;
   hospital?: string;
+  /** Filters to documents carrying a diagnosis of this condition. */
+  condition?: string;
   from?: string;
   to?: string;
   search?: string;
@@ -46,6 +48,7 @@ function buildQueryString(filters?: DocumentFilters): string {
   const params = new URLSearchParams();
   if (filters.type) params.set("type", filters.type);
   if (filters.hospital) params.set("hospital", filters.hospital);
+  if (filters.condition) params.set("condition", filters.condition);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   if (filters.search) params.set("search", filters.search);

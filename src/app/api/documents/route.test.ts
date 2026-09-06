@@ -161,3 +161,79 @@ describeIfDb('GET /api/documents', () => {
     expect((await GET(nextRequest('http://t/api/documents?limit=100000'))).status).toBe(400);
   });
 });
+
+describeIfDb('GET /api/documents?condition=', () => {
+  beforeAll(async () => {
+    await seedUsers();
+  });
+  afterAll(async () => {
+    await cleanup();
+  });
+  beforeEach(() => {
+    resetRateLimits();
+    actAs(USER_A);
+  });
+
+  it('finds every record for a condition across hospitals', async () => {
+    // The specification's own example: a patient managing diabetes and a separate
+    // skin condition wants all diabetes records from every hospital, without having
+    // to remember which visit produced which report.
+    const { db, tables } = await import('@/test/route-harness');
+
+    const shifa = await seedDocument(USER_A, { title: 'Shifa visit' });
+    const agakhan = await seedDocument(USER_A, { title: 'Aga Khan visit' });
+    const derm = await seedDocument(USER_A, { title: 'Skin clinic visit' });
+
+    // Seeded the way the pipeline writes them: the verbatim reading plus the linked
+    // concept. The canonical column is what makes "T2DM" and the spelled-out form
+    // select the same records.
+    const { linkCondition } = await import('@/services/nlp/condition-linker');
+    const row = (documentId: string, condition: string) => ({
+      documentId,
+      userId: USER_A,
+      condition,
+      canonicalCondition: linkCondition(condition)?.concept.canonical ?? condition,
+    });
+
+    await db.insert(tables.diagnoses).values([
+      row(shifa, 'Type 2 diabetes mellitus'),
+      row(agakhan, 'T2DM'),
+      row(derm, 'Eczema'),
+    ]);
+
+    const { GET } = await import('./route');
+    const body = await (
+      await GET(nextRequest('http://t/api/documents?condition=diabetes'))
+    ).json();
+
+    const titles = body.documents.map((d: { title: string }) => d.title);
+    expect(titles).toContain('Shifa visit');
+    expect(titles).toContain('Aga Khan visit');
+    expect(titles).not.toContain('Skin clinic visit');
+  });
+
+  it('does not match a condition on another user’s documents', async () => {
+    const { db, tables } = await import('@/test/route-harness');
+    const theirs = await seedDocument(USER_B, { title: "B's diabetes record" });
+    await db.insert(tables.diagnoses).values({
+      documentId: theirs,
+      userId: USER_B,
+      condition: 'Type 2 diabetes mellitus',
+      canonicalCondition: 'Type 2 diabetes mellitus',
+    });
+
+    const { GET } = await import('./route');
+    const body = await (
+      await GET(nextRequest('http://t/api/documents?condition=diabetes'))
+    ).json();
+
+    expect(
+      body.documents.map((d: { title: string }) => d.title)
+    ).not.toContain("B's diabetes record");
+  });
+
+  it('rejects an empty condition rather than matching everything', async () => {
+    const { GET } = await import('./route');
+    expect((await GET(nextRequest('http://t/api/documents?condition=%20'))).status).toBe(400);
+  });
+});

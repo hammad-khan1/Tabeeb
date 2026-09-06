@@ -2,13 +2,6 @@ import type { RetrievedChunk } from './retriever';
 import type { ConversationTurn } from './query-rewriter';
 import { estimateTokenCount } from '@/lib/tokens';
 
-interface ImagingFindingSummary {
-  finding: string;
-  bodyPart: string;
-  severity: string | null;
-  location: string | null;
-  urgencyLevel: string | null;
-}
 
 interface ProfileMedication {
   name: string;
@@ -29,7 +22,6 @@ interface UserProfile {
   medications: ProfileMedication[];
   allergies: ProfileAllergy[];
   conditions: string[];
-  imagingFindings?: ImagingFindingSummary[];
 }
 
 interface PromptMessage {
@@ -135,18 +127,6 @@ function formatPatientContext(profile: UserProfile): string {
     );
   }
 
-  if (profile.imagingFindings && profile.imagingFindings.length > 0) {
-    const { shown, remainder } = truncateList(profile.imagingFindings, MAX_PROFILE_ITEMS);
-    const findings = shown
-      .map((f) => {
-        const details = [f.bodyPart, f.severity, f.urgencyLevel].filter(Boolean).join(', ');
-        return `${f.finding}${details ? ` (${details})` : ''}`;
-      })
-      .join('; ');
-    parts.push(
-      `Imaging findings (AI-assisted): ${findings}${remainder > 0 ? ` (and ${remainder} more)` : ''}`
-    );
-  }
 
   return parts.length > 0 ? parts.join('\n') : 'No patient profile data available.';
 }
