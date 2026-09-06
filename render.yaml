@@ -1,52 +1,36 @@
 # Render blueprint.
 #
-# Point Render at this file (New → Blueprint) and it creates the service with the
-# right settings, so nothing depends on remembering to tick a box in the dashboard.
+# Deliberately minimal. An earlier version specified region, autoDeployTrigger and a
+# paid plan, and the blueprint sync failed with no events recorded — nothing was
+# created, so there was nothing to inspect. Everything omitted here has a sensible
+# Render default that can be changed in the dashboard afterwards, so the file only
+# states what actually matters: it is a Docker service, on the free instance, with a
+# health check that does not touch the database.
 #
-# Secrets are declared with `sync: false`, which means Render prompts for them and
-# never stores them in the repository.
-#
-# On the plan: `free` is 512MB and spins down after ~15 minutes idle, so the first
-# request after a quiet period takes 30-60s to wake.
-#
-# Memory is workable rather than comfortable. Uploaded images are downscaled to
-# 2400px before any vision processing (services/text-extractors/image-normalizer.ts),
-# which bounds the largest allocation to roughly 17MB rather than whatever the phone
-# camera produced. A many-page scanned PDF is the case most likely to run out, since
-# pages are rendered one at a time but the process never returns the memory to the OS.
-#
-# Change to `starter` ($7/mo) if uploads start failing without an error — that
-# symptom is the container being OOM-killed mid-processing.
-
+# Secrets use `sync: false`, so Render prompts for each one and none are stored here.
 services:
   - type: web
     name: tabeeb
     runtime: docker
     plan: free
-    region: oregon
-    dockerfilePath: ./Dockerfile
-
-    # Cheap and unauthenticated. A health check that queries the database turns a
-    # brief database blip into a restart loop.
     healthCheckPath: /api/health
-
-    autoDeployTrigger: commit
-
     envVars:
-      # ── Set by Render ──────────────────────────────────────────────────────
       - key: NODE_ENV
         value: production
+      - key: S3_REGION
+        value: auto
 
-      # ── Prompted for on first deploy ───────────────────────────────────────
-      # Render exposes these as Docker build arguments too, which is what makes the
-      # Clerk publishable key work: Next inlines NEXT_PUBLIC_* into the client bundle
-      # at build time, so a value supplied only at runtime produces an image that
-      # builds cleanly and then fails every request.
+      # Render exposes these to the Docker build as build arguments, which is what
+      # makes the Clerk publishable key work: Next inlines NEXT_PUBLIC_* into the
+      # client bundle at build time, so a value supplied only at runtime produces an
+      # image that builds cleanly and then fails every request.
       - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
         sync: false
-      - key: CLERK_SECRET_KEY
+      - key: NEXT_PUBLIC_APP_URL
         sync: false
 
+      - key: CLERK_SECRET_KEY
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: GROQ_API_KEY
@@ -54,8 +38,6 @@ services:
       - key: PINECONE_API_KEY
         sync: false
 
-      # Object storage. Without it the container writes uploads to its own disk, and
-      # every redeploy destroys them.
       - key: S3_BUCKET
         sync: false
       - key: S3_ACCESS_KEY_ID
@@ -64,13 +46,6 @@ services:
         sync: false
       - key: S3_ENDPOINT
         sync: false
-      - key: S3_REGION
-        value: auto
 
-      # Used to build share links, so it must be the public URL of this service.
-      - key: NEXT_PUBLIC_APP_URL
-        sync: false
-
-      # Optional: enables the biomedical NER cross-check. Rule-based NER runs without it.
       - key: HF_API_KEY
         sync: false
