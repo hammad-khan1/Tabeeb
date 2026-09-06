@@ -78,7 +78,7 @@ export default function DocumentsPage() {
           </p>
         </div>
         <Button render={<Link href="/documents/upload" />}>
-          <Upload className="me-2 size-4" />
+          <Upload className="me-2 size-4" aria-hidden="true" />
           Upload
         </Button>
       </div>
@@ -109,7 +109,7 @@ export default function DocumentsPage() {
               Hospital
             </label>
             <div className="relative">
-              <Search className="absolute start-2.5 top-2.5 size-3.5 text-muted-foreground" />
+              <Search className="absolute start-2.5 top-2.5 size-3.5 text-muted-foreground" aria-hidden="true" />
               <Input
                 placeholder="Search hospital..."
                 value={hospitalFilter}
@@ -160,7 +160,7 @@ export default function DocumentsPage() {
         <Card>
           <CardContent className="flex flex-col items-center py-16 text-center">
             <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-muted">
-              <FileText className="size-7 text-muted-foreground" />
+              <FileText className="size-7 text-muted-foreground" aria-hidden="true" />
             </div>
             <h3 className="text-lg font-semibold">No documents found</h3>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -170,7 +170,7 @@ export default function DocumentsPage() {
             </p>
             {!typeFilter && !hospitalFilter && !dateFrom && !dateTo && (
               <Button className="mt-4" render={<Link href="/documents/upload" />}>
-                <Upload className="me-2 size-4" />
+                <Upload className="me-2 size-4" aria-hidden="true" />
                 Upload Document
               </Button>
             )}

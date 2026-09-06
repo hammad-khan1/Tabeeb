@@ -216,7 +216,7 @@ export default function UploadPage() {
         <Card>
           <CardContent className="flex flex-col items-center py-12 text-center">
             <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-              <CheckCircle2 className="size-7" />
+              <CheckCircle2 className="size-7" aria-hidden="true" />
             </div>
             <h2 className="text-xl font-semibold">Document Uploaded</h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -268,7 +268,7 @@ export default function UploadPage() {
               onDragLeave={handleDragLeave}
             >
               <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Upload className="size-6" />
+                <Upload className="size-6" aria-hidden="true" />
               </div>
               <h3 className="text-base font-semibold">
                 Drag and drop your file here
@@ -346,7 +346,7 @@ export default function UploadPage() {
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <FileText className="size-5" />
+                <FileText className="size-5" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{file.name}</p>
@@ -364,7 +364,7 @@ export default function UploadPage() {
                   setUploadError("");
                 }}
               >
-                <X className="size-4" />
+                <X className="size-4" aria-hidden="true" />
               </Button>
             </div>
           </CardContent>
@@ -450,10 +450,14 @@ export default function UploadPage() {
         </Card>
       )}
 
-      {/* Error */}
+      {/* Error. `role="alert"` so it is announced the moment it appears — an upload
+          failure the user never hears about is an upload they think worked. */}
       {uploadError && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <AlertCircle className="size-4 shrink-0" />
+        <div
+          role="alert"
+          className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
           {uploadError}
         </div>
       )}
@@ -468,12 +472,12 @@ export default function UploadPage() {
           >
             {uploadStatus === "uploading" ? (
               <>
-                <Loader2 className="me-2 size-4 animate-spin" />
+                <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
                 Uploading...
               </>
             ) : (
               <>
-                <Upload className="me-2 size-4" />
+                <Upload className="me-2 size-4" aria-hidden="true" />
                 Upload Document
               </>
             )}
@@ -489,7 +493,7 @@ export default function UploadPage() {
             setVoiceDialogOpen(true);
           }}
         >
-          <Mic className="me-2 size-4" />
+          <Mic className="me-2 size-4" aria-hidden="true" />
           Voice Intake
         </Button>
       </div>
@@ -511,14 +515,14 @@ export default function UploadPage() {
 
             {recorderError && (
               <div className="flex items-center gap-2 text-sm text-red-600">
-                <AlertCircle className="size-4" />
+                <AlertCircle className="size-4" aria-hidden="true" />
                 {recorderError}
               </div>
             )}
 
             {!isRecording && !audioBlob && (
               <Button size="lg" onClick={startRecording}>
-                <Mic className="me-2 size-5" />
+                <Mic className="me-2 size-5" aria-hidden="true" />
                 Start Recording
               </Button>
             )}
@@ -529,7 +533,7 @@ export default function UploadPage() {
                   Recording
                 </Badge>
                 <Button variant="destructive" size="lg" onClick={stopRecording}>
-                  <Square className="me-2 size-4" />
+                  <Square className="me-2 size-4" aria-hidden="true" />
                   Stop
                 </Button>
               </div>
@@ -554,12 +558,12 @@ export default function UploadPage() {
                   <Button onClick={handleVoiceUpload} disabled={voiceUploading}>
                     {voiceUploading ? (
                       <>
-                        <Loader2 className="me-2 size-4 animate-spin" />
+                        <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
                         Processing...
                       </>
                     ) : (
                       <>
-                        <Upload className="me-2 size-4" />
+                        <Upload className="me-2 size-4" aria-hidden="true" />
                         Upload
                       </>
                     )}

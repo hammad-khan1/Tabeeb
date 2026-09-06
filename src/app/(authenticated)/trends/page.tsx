@@ -200,7 +200,7 @@ export default function TrendsPage() {
       {!selectedTest ? (
         <Card>
           <CardContent className="flex flex-col items-center py-16 text-center">
-            <TrendingUp className="mb-4 size-12 text-muted-foreground/50" />
+            <TrendingUp className="mb-4 size-12 text-muted-foreground/50" aria-hidden="true" />
             <h3 className="text-lg font-semibold">Select a Lab Test</h3>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
               {availableTests.length > 0
@@ -214,7 +214,7 @@ export default function TrendsPage() {
       ) : !trendData || chartData.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center py-16 text-center">
-            <TrendingUp className="mb-4 size-10 text-muted-foreground/50" />
+            <TrendingUp className="mb-4 size-10 text-muted-foreground/50" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
               No data available for this test.
             </p>
@@ -429,7 +429,7 @@ export default function TrendsPage() {
                                 variant="destructive"
                                 className="text-[10px]"
                               >
-                                <AlertTriangle className="me-1 size-3" />
+                                <AlertTriangle className="me-1 size-3" aria-hidden="true" />
                                 Abnormal
                               </Badge>
                             ) : (

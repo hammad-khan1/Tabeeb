@@ -126,7 +126,7 @@ export default function InsightsPage() {
         <Button onClick={handleGenerate} disabled={isGenerating}>
           {isGenerating ? (
             <>
-              <Loader2 className="me-2 size-4 animate-spin" />
+              <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
               Generating...
             </>
           ) : (
@@ -141,7 +141,7 @@ export default function InsightsPage() {
       {/* Error */}
       {generateError && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <AlertTriangle className="size-4" />
+          <AlertTriangle className="size-4" aria-hidden="true" />
           {generateError}
         </div>
       )}
@@ -150,7 +150,7 @@ export default function InsightsPage() {
       {isGenerating && (
         <Card>
           <CardContent className="flex flex-col items-center py-12 text-center">
-            <Loader2 className="mb-3 size-8 animate-spin text-primary" />
+            <Loader2 className="mb-3 size-8 animate-spin text-primary" aria-hidden="true" />
             <p className="font-medium">Generating health insight...</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Analyzing your documents, medications, and lab results.
@@ -171,7 +171,7 @@ export default function InsightsPage() {
           <Card>
             <CardContent className="flex flex-col items-center py-16 text-center">
               <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Lightbulb className="size-7" />
+                <Lightbulb className="size-7" aria-hidden="true" />
               </div>
               <h3 className="text-lg font-semibold">No insights yet</h3>
               <p className="mt-2 max-w-sm text-sm text-muted-foreground">
@@ -179,7 +179,7 @@ export default function InsightsPage() {
                 an AI-powered analysis of your health records.
               </p>
               <Button className="mt-4" variant="outline" render={<Link href="/documents/upload" />}>
-                <FileText className="me-2 size-4" />
+                <FileText className="me-2 size-4" aria-hidden="true" />
                 Upload Documents
               </Button>
             </CardContent>

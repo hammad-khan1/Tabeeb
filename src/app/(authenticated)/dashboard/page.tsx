@@ -109,7 +109,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Documents
             </CardTitle>
-            <FileText className="size-4 text-muted-foreground" />
+            <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -123,7 +123,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Recent Uploads
             </CardTitle>
-            <Clock className="size-4 text-muted-foreground" />
+            <Clock className="size-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -138,7 +138,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Active Medications
             </CardTitle>
-            <Pill className="size-4 text-muted-foreground" />
+            <Pill className="size-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -152,7 +152,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Pending Alerts
             </CardTitle>
-            <AlertTriangle className="size-4 text-muted-foreground" />
+            <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -172,19 +172,19 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Button render={<Link href="/documents/upload" />}>
-            <Upload className="me-2 size-4" />
+            <Upload className="me-2 size-4" aria-hidden="true" />
             Upload Document
           </Button>
           <Button variant="outline" render={<Link href="/chat" />}>
-            <MessageSquare className="me-2 size-4" />
+            <MessageSquare className="me-2 size-4" aria-hidden="true" />
             Ask Tabeeb
           </Button>
           <Button variant="outline" render={<Link href="/documents/upload" />}>
-            <Mic className="me-2 size-4" />
+            <Mic className="me-2 size-4" aria-hidden="true" />
             Voice Note
           </Button>
           <Button variant="outline" render={<Link href="/trends" />}>
-            <TrendingUp className="me-2 size-4" />
+            <TrendingUp className="me-2 size-4" aria-hidden="true" />
             View Trends
           </Button>
         </CardContent>
@@ -211,7 +211,7 @@ export default function DashboardPage() {
               </div>
             ) : recentDocs.length === 0 ? (
               <div className="flex flex-col items-center py-8 text-center">
-                <FileText className="mb-3 size-10 text-muted-foreground/50" />
+                <FileText className="mb-3 size-10 text-muted-foreground/50" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
                   No documents yet. Upload your first document to get started.
                 </p>
@@ -228,7 +228,7 @@ export default function DashboardPage() {
                     className="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-muted/50"
                   >
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <FileText className="size-4" />
+                      <FileText className="size-4" aria-hidden="true" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{doc.title}</p>
@@ -274,7 +274,7 @@ export default function DashboardPage() {
             ) : abnormalLabs === 0 && allergiesCount === 0 ? (
               <div className="flex flex-col items-center py-6 text-center">
                 <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                  <TrendingUp className="size-5" />
+                  <TrendingUp className="size-5" aria-hidden="true" />
                 </div>
                 <p className="text-sm font-medium">All clear</p>
                 <p className="text-xs text-muted-foreground">
@@ -286,7 +286,7 @@ export default function DashboardPage() {
                 {abnormalLabs > 0 && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                     <div className="flex items-center gap-2">
-                      <AlertTriangle className="size-4 text-amber-600" />
+                      <AlertTriangle className="size-4 text-amber-600" aria-hidden="true" />
                       <p className="text-sm font-medium text-amber-800">
                         {abnormalLabs} abnormal lab result{abnormalLabs > 1 ? "s" : ""}
                       </p>
@@ -302,7 +302,7 @@ export default function DashboardPage() {
                 {allergiesCount > 0 && (
                   <div className="rounded-lg border border-red-200 bg-red-50 p-3">
                     <div className="flex items-center gap-2">
-                      <AlertTriangle className="size-4 text-red-600" />
+                      <AlertTriangle className="size-4 text-red-600" aria-hidden="true" />
                       <p className="text-sm font-medium text-red-800">
                         {allergiesCount} known allerg{allergiesCount > 1 ? "ies" : "y"}
                       </p>

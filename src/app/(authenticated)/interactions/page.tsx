@@ -157,7 +157,7 @@ export default function InteractionsPage() {
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Pill className="size-4" />
+              <Pill className="size-4" aria-hidden="true" />
               Current Medications
             </CardTitle>
           </CardHeader>
@@ -173,7 +173,7 @@ export default function InteractionsPage() {
               </div>
             ) : medications.length === 0 ? (
               <div className="flex flex-col items-center py-8 text-center">
-                <Pill className="mb-3 size-8 text-muted-foreground/50" />
+                <Pill className="mb-3 size-8 text-muted-foreground/50" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
                   No medications on record.
                 </p>
@@ -225,12 +225,12 @@ export default function InteractionsPage() {
                 >
                   {isChecking ? (
                     <>
-                      <Loader2 className="me-2 size-4 animate-spin" />
+                      <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
                       Checking...
                     </>
                   ) : (
                     <>
-                      <Search className="me-2 size-4" />
+                      <Search className="me-2 size-4" aria-hidden="true" />
                       Check
                     </>
                   )}
@@ -246,7 +246,7 @@ export default function InteractionsPage() {
           {/* Error */}
           {error && (
             <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <AlertTriangle className="size-4" />
+              <AlertTriangle className="size-4" aria-hidden="true" />
               {error}
             </div>
           )}
@@ -255,7 +255,7 @@ export default function InteractionsPage() {
           {isChecking && !results && (
             <Card>
               <CardContent className="flex flex-col items-center py-12">
-                <Loader2 className="mb-3 size-8 animate-spin text-primary" />
+                <Loader2 className="mb-3 size-8 animate-spin text-primary" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
                   Analyzing interactions...
                 </p>
@@ -270,7 +270,7 @@ export default function InteractionsPage() {
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
+                    <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
                     <div>
                       <p className="text-sm font-medium">Summary</p>
                       <p className="mt-1 text-sm text-muted-foreground">
@@ -294,7 +294,7 @@ export default function InteractionsPage() {
                 <Card className="border-amber-500/40 bg-amber-500/5">
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
-                      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+                      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" />
                       <div className="space-y-2">
                         <p className="text-sm font-medium">What this check covers</p>
                         {results.limitations.map((limitation, i) => (
@@ -313,7 +313,7 @@ export default function InteractionsPage() {
                 <Card>
                   <CardContent className="flex flex-col items-center py-10 text-center">
                     <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                      <CheckCircle2 className="size-6" />
+                      <CheckCircle2 className="size-6" aria-hidden="true" />
                     </div>
                     <p className="font-medium">Nothing flagged</p>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -371,7 +371,7 @@ export default function InteractionsPage() {
           {!results && !isChecking && !error && (
             <Card>
               <CardContent className="flex flex-col items-center py-16 text-center">
-                <ShieldCheck className="mb-4 size-12 text-muted-foreground/50" />
+                <ShieldCheck className="mb-4 size-12 text-muted-foreground/50" aria-hidden="true" />
                 <h3 className="text-lg font-semibold">Check Interactions</h3>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                   Enter a drug, food, or supplement name above to check for

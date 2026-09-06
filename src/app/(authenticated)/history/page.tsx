@@ -161,7 +161,7 @@ export default function HistoryPage() {
   if (!data) {
     return (
       <div className="flex flex-col items-center py-16 text-center">
-        <Clock className="mb-4 size-12 text-muted-foreground/50" />
+        <Clock className="mb-4 size-12 text-muted-foreground/50" aria-hidden="true" />
         <h2 className="text-xl font-semibold">No history available</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Upload documents to build your medical history timeline.
@@ -187,7 +187,7 @@ export default function HistoryPage() {
             Print
           </Button>
           <Button variant="outline" onClick={() => setShareDialogOpen(true)}>
-            <Share2 className="me-2 size-4" />
+            <Share2 className="me-2 size-4" aria-hidden="true" />
             Share
           </Button>
         </div>
@@ -200,7 +200,7 @@ export default function HistoryPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Conditions
             </CardTitle>
-            <Stethoscope className="size-4 text-muted-foreground" />
+            <Stethoscope className="size-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -223,7 +223,7 @@ export default function HistoryPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Medications
             </CardTitle>
-            <Pill className="size-4 text-muted-foreground" />
+            <Pill className="size-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -248,7 +248,7 @@ export default function HistoryPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Allergies
             </CardTitle>
-            <AlertTriangle className="size-4 text-muted-foreground" />
+            <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.allergies.length}</div>
@@ -271,7 +271,7 @@ export default function HistoryPage() {
       {data.visitTimeline.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center py-12 text-center">
-            <Clock className="mb-3 size-10 text-muted-foreground/50" />
+            <Clock className="mb-3 size-10 text-muted-foreground/50" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
               No timeline events yet. Upload dated documents to build your
               timeline.
@@ -289,7 +289,7 @@ export default function HistoryPage() {
                 {/* Month header */}
                 <div className="relative mb-4 flex items-center gap-4">
                   <div className="z-10 flex size-10 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground print:size-8">
-                    <Clock className="size-4" />
+                    <Clock className="size-4" aria-hidden="true" />
                   </div>
                   <h2 className="text-lg font-semibold">
                     {formatMonth(group.month)}
@@ -368,16 +368,16 @@ export default function HistoryPage() {
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
-                <CheckCircle2 className="size-4" />
+                <CheckCircle2 className="size-4" aria-hidden="true" />
                 Share link created successfully.
               </div>
               <div className="flex gap-2">
                 <Input value={shareLink} readOnly className="flex-1 text-xs" />
                 <Button variant="outline" size="icon" onClick={handleCopy}>
                   {copied ? (
-                    <CheckCircle2 className="size-4 text-emerald-600" />
+                    <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" />
                   ) : (
-                    <Copy className="size-4" />
+                    <Copy className="size-4" aria-hidden="true" />
                   )}
                 </Button>
               </div>
@@ -396,7 +396,7 @@ export default function HistoryPage() {
                 <Button onClick={handleShare} disabled={shareLoading}>
                   {shareLoading ? (
                     <>
-                      <Loader2 className="me-2 size-4 animate-spin" />
+                      <Loader2 className="me-2 size-4 animate-spin" aria-hidden="true" />
                       Generating...
                     </>
                   ) : (

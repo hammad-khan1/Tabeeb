@@ -37,7 +37,7 @@ function Unavailable({ message }: { message: string }) {
       <Card className="max-w-md w-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className="w-5 h-5 text-destructive" />
+            <AlertTriangle className="w-5 h-5 text-destructive" aria-hidden="true" />
             Link unavailable
           </CardTitle>
         </CardHeader>
@@ -138,7 +138,7 @@ export default async function SharedRecordPage({
 
         <Section
           title="Allergies"
-          icon={<AlertTriangle className="w-4 h-4 text-destructive" />}
+          icon={<AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />}
           count={history.allergies.length}
         >
           <ul className="space-y-2">
@@ -156,7 +156,7 @@ export default async function SharedRecordPage({
 
         <Section
           title="Current medicines"
-          icon={<Pill className="w-4 h-4" />}
+          icon={<Pill className="w-4 h-4" aria-hidden="true" />}
           count={history.currentMedications.length}
         >
           <ul className="space-y-2">
@@ -176,7 +176,7 @@ export default async function SharedRecordPage({
 
         <Section
           title="Conditions"
-          icon={<Stethoscope className="w-4 h-4" />}
+          icon={<Stethoscope className="w-4 h-4" aria-hidden="true" />}
           count={history.conditions.length}
         >
           <ul className="space-y-2">
@@ -240,7 +240,7 @@ export default async function SharedRecordPage({
 
         <Section
           title="Visits"
-          icon={<Building2 className="w-4 h-4" />}
+          icon={<Building2 className="w-4 h-4" aria-hidden="true" />}
           count={history.visitTimeline.length}
         >
           <div className="space-y-4">
