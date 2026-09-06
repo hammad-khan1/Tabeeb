@@ -53,7 +53,9 @@ COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
 
-# Migrations and the runner, so `npm run db:migrate` works against production.
+# The migration runner and its two dependencies. It is plain .mjs so `node` runs it
+# directly — needing tsx here would mean fetching a devDependency over the network
+# in the middle of a deploy.
 COPY --from=build --chown=nextjs:nodejs /app/drizzle ./drizzle
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/postgres ./node_modules/postgres
