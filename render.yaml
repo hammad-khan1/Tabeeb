@@ -6,17 +6,23 @@
 # Secrets are declared with `sync: false`, which means Render prompts for them and
 # never stores them in the repository.
 #
-# On the plan: `starter` rather than `free`. The free instance is 512MB and spins down
-# after 15 minutes idle. Neither is fatal, but `sharp` decoding a phone photo during
-# OCR can push a 512MB container over the limit, and the failure looks like a document
-# that silently never finishes processing. Change to `free` if you want to try it
-# anyway — the rest of the file is unaffected.
+# On the plan: `free` is 512MB and spins down after ~15 minutes idle, so the first
+# request after a quiet period takes 30-60s to wake.
+#
+# Memory is workable rather than comfortable. Uploaded images are downscaled to
+# 2400px before any vision processing (services/text-extractors/image-normalizer.ts),
+# which bounds the largest allocation to roughly 17MB rather than whatever the phone
+# camera produced. A many-page scanned PDF is the case most likely to run out, since
+# pages are rendered one at a time but the process never returns the memory to the OS.
+#
+# Change to `starter` ($7/mo) if uploads start failing without an error — that
+# symptom is the container being OOM-killed mid-processing.
 
 services:
   - type: web
     name: tabeeb
     runtime: docker
-    plan: starter
+    plan: free
     region: oregon
     dockerfilePath: ./Dockerfile
 
