@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /** sharp is a native addon, used to normalise images before OCR. */
-  serverExternalPackages: ["sharp"],
+  /**
+   * Left out of the bundle rather than compiled into it.
+   *
+   * `sharp` is a native addon. `pdf-parse` wraps pdf.js, which touches browser globals
+   * — DOMMatrix among them — while its module is being evaluated. Bundled, that code
+   * runs in Node and throws `ReferenceError: DOMMatrix is not defined` before any
+   * function is called. Loaded from node_modules it resolves its Node build instead.
+   */
+  serverExternalPackages: ["sharp", "pdf-parse"],
 
   /**
    * Emits .next/standalone with only the files the server actually needs, so the

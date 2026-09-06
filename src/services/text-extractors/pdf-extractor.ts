@@ -1,4 +1,16 @@
-import { PDFParse } from 'pdf-parse';
+
+/**
+ * Imported at call time, not module load.
+ *
+ * pdf.js evaluates browser-dependent code as its module is loaded, so a top-level
+ * import made every upload — including images, which never touch a PDF — depend on it
+ * succeeding. In production that surfaced as a 500 on uploading a photograph, with a
+ * DOMMatrix stack trace that named nothing in this codebase.
+ */
+async function loadPdfParse() {
+  const { PDFParse } = await import('pdf-parse');
+  return PDFParse;
+}
 
 export interface PdfExtractionResult {
   text: string;
@@ -15,6 +27,7 @@ const MAX_OCR_PAGES = 15;
  * dead-ending, render each page so the caller can run it through vision OCR.
  */
 export async function extractFromPdf(buffer: Buffer): Promise<PdfExtractionResult> {
+  const PDFParse = await loadPdfParse();
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
     const textResult = await parser.getText();
