@@ -25,6 +25,7 @@ Explore how Tabeeb transforms scattered medical records into an organized, searc
 - [Setup & Installation](#setup--installation)
 - [Environment Variables](#environment-variables)
 - [Available Scripts](#available-scripts)
+- [Live Demo](#-live-demo)
 - [Deploying](#deploying)
 - [File-by-File Reference](#file-by-file-reference)
 - [Notes on Repo Housekeeping Files](#notes-on-repo-housekeeping-files)
