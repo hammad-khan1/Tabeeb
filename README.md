@@ -7,6 +7,13 @@ Built with **Next.js 16 (App Router)**, **TypeScript**, **Drizzle ORM + PostgreS
 > ⚠️ This is a student/portfolio project, not a certified medical device. It does not provide medical advice and should not be used for real clinical decision-making.
 
 ---
+## 🚀 Live Demo
+
+**Try Tabeeb live:** [https://tabeeb-f20n.onrender.com/](https://tabeeb-f20n.onrender.com/)
+
+Explore how Tabeeb transforms scattered medical records into an organized, searchable health history with AI-powered document processing, bilingual health queries, lab trend analysis, and personalized health insights.
+
+> ⚠️ **Disclaimer:** Tabeeb is a student/portfolio project, not a certified medical device. It does not provide medical advice and should not be used for real clinical decision-making.
 
 ## Table of Contents
 
