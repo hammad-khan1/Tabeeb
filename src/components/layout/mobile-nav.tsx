@@ -13,6 +13,7 @@ import {
   Lightbulb,
   Settings,
   Menu,
+  ClipboardCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -33,6 +34,7 @@ const navItems: Array<{ href: string; key: TranslationKey; icon: React.ElementTy
   { href: "/documents", key: "nav.documents", icon: FileText },
   { href: "/chat", key: "nav.chat", icon: MessageSquare },
   { href: "/history", key: "nav.history", icon: Clock },
+  { href: "/briefing", key: "nav.briefing", icon: ClipboardCheck },
   { href: "/interactions", key: "nav.interactions", icon: ShieldCheck },
   { href: "/trends", key: "nav.trends", icon: TrendingUp },
   { href: "/insights", key: "nav.insights", icon: Lightbulb },

@@ -39,6 +39,7 @@ const STRINGS = {
   'nav.interactions': { en: 'Interactions', ur: 'دواؤں کا تعامل' },
   'nav.trends': { en: 'Trends', ur: 'رجحانات' },
   'nav.insights': { en: 'Insights', ur: 'بصیرت' },
+  'nav.briefing': { en: 'Patient Briefing', ur: 'طبی بریفنگ' },
   'nav.settings': { en: 'Settings', ur: 'ترتیبات' },
 
   // ── Common actions ───────────────────────────────────────────────────────
