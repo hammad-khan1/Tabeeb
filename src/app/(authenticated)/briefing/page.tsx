@@ -12,6 +12,7 @@ import {
   Clock,
   Copy,
   Download,
+  Eye,
   FileCheck2,
   FileText,
   FlaskConical,
@@ -53,6 +54,7 @@ import type {
   PatientBriefingData,
   DoctorProfile,
 } from "@/services/briefing/types";
+import { SourceDocumentViewer } from "@/components/briefing/source-document-viewer";
 
 const fetcher = (url: string) => fetch(url).then((res) => {
   if (!res.ok) throw new Error("Failed to load briefing data");
@@ -131,6 +133,65 @@ export default function BriefingPage() {
   const [doctorNotes, setDoctorNotes] = useState("");
   const [doctorSaving, setDoctorSaving] = useState(false);
   const [doctorError, setDoctorError] = useState("");
+
+  // Document Viewer State
+  const [viewerState, setViewerState] = useState<{
+    isOpen: boolean;
+    documentId: string;
+    documentTitle: string;
+    documentDate?: string | null;
+    fileUrl: string;
+    mimeType?: string | null;
+    pageNumber?: number | null;
+    doctorName?: string | null;
+    hospital?: string | null;
+    excerpt?: string | null;
+    highlightTerm?: string | null;
+    entityContext?: {
+      entityType: "medication" | "lab" | "condition" | "conflict" | "timeline";
+      name: string;
+      value?: string | null;
+      details?: string | null;
+    };
+  }>({
+    isOpen: false,
+    documentId: "",
+    documentTitle: "",
+    fileUrl: "",
+  });
+
+  const openSourceViewer = (params: {
+    documentId: string;
+    documentTitle?: string;
+    documentDate?: string | null;
+    pageNumber?: number | null;
+    mimeType?: string | null;
+    doctorName?: string | null;
+    hospital?: string | null;
+    excerpt?: string | null;
+    highlightTerm?: string | null;
+    entityContext?: {
+      entityType: "medication" | "lab" | "condition" | "conflict" | "timeline";
+      name: string;
+      value?: string | null;
+      details?: string | null;
+    };
+  }) => {
+    setViewerState({
+      isOpen: true,
+      documentId: params.documentId,
+      documentTitle: params.documentTitle || "Medical Record",
+      documentDate: params.documentDate,
+      fileUrl: `/api/documents/${params.documentId}/file`,
+      mimeType: params.mimeType,
+      pageNumber: params.pageNumber,
+      doctorName: params.doctorName,
+      hospital: params.hospital,
+      excerpt: params.excerpt,
+      highlightTerm: params.highlightTerm,
+      entityContext: params.entityContext,
+    });
+  };
 
   const handleDownloadPdf = async () => {
     try {
@@ -568,6 +629,31 @@ export default function BriefingPage() {
                     <div className="text-[11px] text-muted-foreground">
                       Sources: {conf.sourceCitations.join(" · ")}
                     </div>
+                    {conf.sourceDocumentIds && conf.sourceDocumentIds.length > 0 && (
+                      <div className="pt-2 flex items-center gap-2 flex-wrap">
+                        {conf.sourceDocumentIds.map((docId, idx) => (
+                          <Button
+                            key={docId}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openSourceViewer({
+                              documentId: docId,
+                              documentTitle: `Prescription Record ${idx + 1}`,
+                              highlightTerm: conf.involvedMedications[0],
+                              entityContext: {
+                                entityType: "conflict",
+                                name: conf.title,
+                                details: conf.recommendation,
+                              },
+                            })}
+                            className="text-[11px] h-6 px-2 gap-1 text-primary hover:text-primary print:hidden"
+                          >
+                            <Eye className="size-3" />
+                            Verify Source Record {conf.sourceDocumentIds && conf.sourceDocumentIds.length > 1 ? `#${idx + 1}` : ""}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </CardContent>
@@ -694,7 +780,38 @@ export default function BriefingPage() {
                             {med.hospital || "Not documented"}
                           </td>
                           <td className="py-2.5 text-xs text-muted-foreground">
-                            {med.sourceCitation}
+                            <div className="flex flex-col gap-1 items-start">
+                              <span>
+                                {med.sourceCitation}
+                                {med.pageNumber && (
+                                  <span className="ms-1 font-mono text-[11px] text-primary">(p. {med.pageNumber})</span>
+                                )}
+                              </span>
+                              {med.sourceDocumentId && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openSourceViewer({
+                                    documentId: med.sourceDocumentId,
+                                    documentTitle: med.sourceDocumentTitle,
+                                    documentDate: med.sourceDocumentDate,
+                                    pageNumber: med.pageNumber,
+                                    mimeType: med.mimeType,
+                                    highlightTerm: med.name,
+                                    entityContext: {
+                                      entityType: "medication",
+                                      name: med.name,
+                                      value: [med.dosage, med.frequency].filter(Boolean).join(" · "),
+                                      details: `Prescribed by ${med.prescribingDoctor.name}`,
+                                    },
+                                  })}
+                                  className="text-[11px] h-6 px-2 gap-1 text-primary hover:text-primary print:hidden"
+                                >
+                                  <Eye className="size-3" />
+                                  Verify in Original Document
+                                </Button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -779,6 +896,28 @@ export default function BriefingPage() {
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         {c.severity && <Badge variant="secondary">{c.severity}</Badge>}
                         <span>Source: {c.sourceDocumentTitle}</span>
+                        {c.sourceDocumentId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openSourceViewer({
+                              documentId: c.sourceDocumentId,
+                              documentTitle: c.sourceDocumentTitle,
+                              pageNumber: c.pageNumber,
+                              mimeType: c.mimeType,
+                              highlightTerm: c.condition,
+                              entityContext: {
+                                entityType: "condition",
+                                name: c.condition,
+                                details: c.icd10Code ? `ICD-10: ${c.icd10Code}` : undefined,
+                              },
+                            })}
+                            className="text-[11px] h-6 px-1.5 gap-1 text-primary hover:text-primary print:hidden"
+                          >
+                            <Eye className="size-3" />
+                            View
+                          </Button>
+                        )}
                       </div>
                     </li>
                   ))}
@@ -875,7 +1014,30 @@ export default function BriefingPage() {
                             )}
                           </td>
                           <td className="py-2.5 text-xs text-muted-foreground">
-                            {trend.clinicalNote}
+                            <div className="flex flex-col gap-1 items-start">
+                              <span>{trend.clinicalNote}</span>
+                              {trend.sourceDocumentId && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openSourceViewer({
+                                    documentId: trend.sourceDocumentId!,
+                                    documentTitle: `Lab Report: ${trend.testName}`,
+                                    highlightTerm: trend.testName,
+                                    entityContext: {
+                                      entityType: "lab",
+                                      name: trend.testName,
+                                      value: `${trend.latestValue} ${trend.unit || ""}`,
+                                      details: trend.clinicalNote,
+                                    },
+                                  })}
+                                  className="text-[11px] h-6 px-2 gap-1 text-primary hover:text-primary print:hidden"
+                                >
+                                  <Eye className="size-3" />
+                                  View Original Report
+                                </Button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -988,13 +1150,42 @@ export default function BriefingPage() {
             <CardContent>
               <div className="space-y-2.5">
                 {briefing.citations.map((c) => (
-                  <div key={c.documentId} className="p-2.5 rounded border bg-card/60 text-xs space-y-1">
+                  <div key={c.documentId} className="p-3 rounded-lg border bg-card/60 text-xs space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-foreground">{c.documentTitle}</span>
-                      <span className="text-muted-foreground">{c.documentDate || "Undated"}</span>
+                      <span className="font-semibold text-foreground text-sm">
+                        [{c.index}] {c.documentTitle}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {c.pageNumber && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            p. {c.pageNumber}
+                          </Badge>
+                        )}
+                        <span className="text-muted-foreground">{c.documentDate || "Undated"}</span>
+                      </div>
                     </div>
-                    <p className="text-muted-foreground">{c.excerpt}</p>
-                    <p className="text-[11px] text-primary/80 font-medium">{c.doctorAttributionEvidence}</p>
+                    <p className="text-muted-foreground">“{c.excerpt}”</p>
+                    <div className="flex items-center justify-between pt-1 border-t">
+                      <p className="text-[11px] text-primary/80 font-medium">{c.doctorAttributionEvidence}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openSourceViewer({
+                          documentId: c.documentId,
+                          documentTitle: c.documentTitle,
+                          documentDate: c.documentDate,
+                          pageNumber: c.pageNumber,
+                          mimeType: c.mimeType,
+                          excerpt: c.excerpt,
+                          doctorName: c.doctorName,
+                          hospital: c.hospital,
+                        })}
+                        className="text-[11px] h-6 px-2 gap-1 text-primary hover:text-primary print:hidden"
+                      >
+                        <Eye className="size-3" />
+                        View Document
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1090,13 +1281,38 @@ export default function BriefingPage() {
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>
-                        <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground">
-                          <Badge variant="outline" className="text-[10px]">
-                            {event.type.replace("_", " ").toUpperCase()}
-                          </Badge>
-                          <span className="font-medium text-foreground">Dr. {event.doctorName}</span>
-                          {event.doctorSpecialty && <span>· {event.doctorSpecialty}</span>}
-                          {event.hospital && <span>· {event.hospital}</span>}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="text-[10px]">
+                              {event.type.replace("_", " ").toUpperCase()}
+                            </Badge>
+                            <span className="font-medium text-foreground">Dr. {event.doctorName}</span>
+                            {event.doctorSpecialty && <span>· {event.doctorSpecialty}</span>}
+                            {event.hospital && <span>· {event.hospital}</span>}
+                          </div>
+                          {event.sourceDocumentId && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openSourceViewer({
+                                documentId: event.sourceDocumentId!,
+                                documentTitle: event.sourceDocumentTitle || "Clinical Document",
+                                pageNumber: event.pageNumber,
+                                mimeType: event.mimeType,
+                                doctorName: event.doctorName,
+                                hospital: event.hospital,
+                                entityContext: {
+                                  entityType: "timeline",
+                                  name: event.title,
+                                  details: `Dr. ${event.doctorName} (${event.type.replace("_", " ")})`,
+                                },
+                              })}
+                              className="text-[11px] h-6 px-1.5 gap-1 text-primary hover:text-primary print:hidden"
+                            >
+                              <Eye className="size-3" />
+                              View Document
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1445,6 +1661,23 @@ export default function BriefingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Interactive Source Document Viewer Modal */}
+      <SourceDocumentViewer
+        isOpen={viewerState.isOpen}
+        onClose={() => setViewerState((prev) => ({ ...prev, isOpen: false }))}
+        documentId={viewerState.documentId}
+        documentTitle={viewerState.documentTitle}
+        documentDate={viewerState.documentDate}
+        fileUrl={viewerState.fileUrl}
+        mimeType={viewerState.mimeType}
+        pageNumber={viewerState.pageNumber}
+        doctorName={viewerState.doctorName}
+        hospital={viewerState.hospital}
+        excerpt={viewerState.excerpt}
+        highlightTerm={viewerState.highlightTerm}
+        entityContext={viewerState.entityContext}
+      />
     </div>
   );
 }

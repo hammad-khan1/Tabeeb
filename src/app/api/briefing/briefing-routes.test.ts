@@ -21,6 +21,7 @@ import { GET as listDoctors, POST as createDoctor } from './doctors/route';
 import { PATCH as updateDoctor, DELETE as deleteDoctor } from './doctors/[id]/route';
 import { GET as listShareLinks, POST as createShareLink } from './share/route';
 import { POST as revokeShareLink } from './share/[token]/revoke/route';
+import { GET as getSharedDocumentFile } from './share/[token]/documents/[id]/file/route';
 import { getSharedBriefing } from '@/services/briefing/share';
 
 const describeIfDb = HAS_DATABASE ? describe : describe.skip;
@@ -300,5 +301,54 @@ describeIfDb('Doctor-Ready Patient Briefing API Routes', { timeout: 30000 }, () 
     const userBRevokeReq = nextRequest(`http://localhost:3000/api/briefing/share/${shareData.token}/revoke`, { method: 'POST' });
     const userBRevokeRes = await revokeShareLink(userBRevokeReq, params({ token: shareData.token }));
     expect(userBRevokeRes.status).toBe(404);
+  }, 30000);
+
+  it('GET /api/briefing/share/[token]/documents/[id]/file enforces scoping, expiration, and isolation', async () => {
+    actAs(USER_A);
+    // Create an active share link including docA1 and docA2
+    const shareReq = jsonRequest('http://localhost:3000/api/briefing/share', 'POST', {
+      title: 'Doctor Verification Link',
+      expiresInHours: 24,
+    });
+    const shareRes = await createShareLink(shareReq);
+    expect(shareRes.status).toBe(201);
+    const { token } = await shareRes.json();
+
+    // 1. Authorized recipient fetches permitted document file
+    const docReq = nextRequest(`http://localhost:3000/api/briefing/share/${token}/documents/${docA1}/file`);
+    const docRes = await getSharedDocumentFile(docReq, params({ token, id: docA1 }));
+    expect(docRes.status).toBe(200);
+    expect(docRes.headers.get('Content-Type')).toBe('text/plain');
+    expect(docRes.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(docRes.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(docRes.headers.get('Content-Disposition')).toContain('inline');
+
+    // 2. Cross-user document isolation: recipient cannot fetch User B's document via User A's token
+    const crossReq = nextRequest(`http://localhost:3000/api/briefing/share/${token}/documents/${docB1}/file`);
+    const crossRes = await getSharedDocumentFile(crossReq, params({ token, id: docB1 }));
+    expect(crossRes.status).toBe(404);
+
+    // 3. Unknown document ID returns 404 (both malformed string and valid non-existent UUID)
+    const unknownReq = nextRequest(`http://localhost:3000/api/briefing/share/${token}/documents/unknown-id/file`);
+    const unknownRes = await getSharedDocumentFile(unknownReq, params({ token, id: 'unknown-id' }));
+    expect(unknownRes.status).toBe(404);
+
+    const nonExistentUuid = '00000000-0000-0000-0000-000000000000';
+    const nonExistentReq = nextRequest(`http://localhost:3000/api/briefing/share/${token}/documents/${nonExistentUuid}/file`);
+    const nonExistentRes = await getSharedDocumentFile(nonExistentReq, params({ token, id: nonExistentUuid }));
+    expect(nonExistentRes.status).toBe(404);
+
+    // 4. Invalid token returns 404
+    const invalidTokenReq = nextRequest(`http://localhost:3000/api/briefing/share/invalid-token-123/documents/${docA1}/file`);
+    const invalidTokenRes = await getSharedDocumentFile(invalidTokenReq, params({ token: 'invalid-token-123', id: docA1 }));
+    expect(invalidTokenRes.status).toBe(404);
+
+    // 5. Revoking the share link immediately blocks access (returns 404)
+    const revokeReq = nextRequest(`http://localhost:3000/api/briefing/share/${token}/revoke`, { method: 'POST' });
+    await revokeShareLink(revokeReq, params({ token }));
+
+    const afterRevokeReq = nextRequest(`http://localhost:3000/api/briefing/share/${token}/documents/${docA1}/file`);
+    const afterRevokeRes = await getSharedDocumentFile(afterRevokeReq, params({ token, id: docA1 }));
+    expect(afterRevokeRes.status).toBe(404);
   }, 30000);
 });

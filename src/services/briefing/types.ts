@@ -41,6 +41,9 @@ export interface AttributedMedication {
   sourceDocumentTitle: string;
   sourceDocumentDate: string | null;
   sourceCitation: string;
+  citationIndex?: number;
+  pageNumber?: number | null;
+  mimeType?: string | null;
   changesNote?: string | null;
 }
 
@@ -63,6 +66,9 @@ export interface AttributedLabResult {
   sourceDocumentId: string;
   sourceDocumentTitle: string;
   sourceCitation: string;
+  citationIndex?: number;
+  pageNumber?: number | null;
+  mimeType?: string | null;
 }
 
 export interface LabTrend {
@@ -82,6 +88,8 @@ export interface LabTrend {
   direction: 'improved' | 'worsened' | 'stable' | 'increased' | 'decreased' | 'single_reading';
   clinicalNote: string;
   readingsCount: number;
+  sourceDocumentId?: string;
+  citationIndex?: number;
 }
 
 export interface TreatmentConflict {
@@ -93,6 +101,7 @@ export interface TreatmentConflict {
   involvedDoctors: string[];
   involvedMedications: string[];
   sourceCitations: string[];
+  sourceDocumentIds?: string[];
   recommendation: string;
 }
 
@@ -108,13 +117,19 @@ export interface DoctorTimelineEvent {
   sourceDocumentId: string;
   sourceDocumentTitle: string;
   pageOrSection?: string | null;
+  pageNumber?: number | null;
+  mimeType?: string | null;
 }
 
 export interface EvidenceCitation {
+  index: number;
   documentId: string;
   documentTitle: string;
+  fileName?: string | null;
+  mimeType?: string | null;
   documentDate: string | null;
   documentType: string;
+  pageNumber?: number | null;
   doctorName: string | null;
   doctorSpecialty: string | null;
   hospital: string | null;
@@ -129,6 +144,7 @@ export interface DoctorConsultationQuestion {
   rationale: string;
   relevantDoctor: string | null;
   sourceCitations: string[];
+  sourceDocumentIds?: string[];
 }
 
 export interface BriefingUncertainty {
@@ -149,6 +165,9 @@ export interface BriefingCondition {
   hospital?: string | null;
   sourceDocumentId: string;
   sourceDocumentTitle: string;
+  citationIndex?: number;
+  pageNumber?: number | null;
+  mimeType?: string | null;
 }
 
 export interface BriefingAllergy {
@@ -156,7 +175,9 @@ export interface BriefingAllergy {
   allergyType?: string | null;
   severity?: string | null;
   reaction?: string | null;
+  sourceDocumentId?: string | null;
   sourceDocumentTitle?: string | null;
+  citationIndex?: number;
 }
 
 export interface BriefingConsultationPlan {

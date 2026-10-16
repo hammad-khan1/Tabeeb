@@ -28,6 +28,7 @@ import {
   attributePrescription,
   attributeLabResult,
   detectSpecialty,
+  findPageNumber,
 } from './doctor-tracker';
 
 /**
@@ -271,6 +272,7 @@ export async function generatePatientBriefing(
         involvedDoctors: distinctDoctors,
         involvedMedications: medsInClass.map((m) => m.name),
         sourceCitations: medsInClass.map((m) => m.sourceCitation),
+        sourceDocumentIds: Array.from(new Set(medsInClass.map((m) => m.sourceDocumentId).filter(Boolean))),
         recommendation: `Clarify with ${distinctDoctors.join(' or ')} whether both medications should be continued or if one was intended to replace the other.`,
       });
     }
@@ -291,6 +293,7 @@ export async function generatePatientBriefing(
       involvedDoctors: Array.from(new Set([...thinners, ...nsaids].map((m) => m.prescribingDoctor.name))),
       involvedMedications: [...thinners, ...nsaids].map((m) => m.name),
       sourceCitations: [...thinners, ...nsaids].map((m) => m.sourceCitation),
+      sourceDocumentIds: Array.from(new Set([...thinners, ...nsaids].map((m) => m.sourceDocumentId).filter(Boolean))),
       recommendation: 'Urgent review recommended: verify if NSAID is actively being taken and discuss gastroprotection or alternative analgesia.',
     });
   }
@@ -376,6 +379,7 @@ export async function generatePatientBriefing(
     const dateStr = (doc.documentDate ?? doc.createdAt ?? new Date()).toISOString();
     const docDoctor = doc.doctorName || 'Doctor not identified in available records';
     const spec = detectSpecialty([doc.rawExtractedText, doc.hospital, doc.title].filter(Boolean).join(' '));
+    const docPage = findPageNumber(doc.rawExtractedText);
 
     if (doc.documentType === 'prescription') {
       doctorTimeline.push({
@@ -389,6 +393,8 @@ export async function generatePatientBriefing(
         hospital: doc.hospital ?? null,
         sourceDocumentId: doc.id,
         sourceDocumentTitle: doc.title,
+        pageNumber: docPage,
+        mimeType: doc.mimeType ?? null,
       });
     } else if (doc.documentType === 'consultation_note' || doc.documentType === 'discharge_summary') {
       doctorTimeline.push({
@@ -402,6 +408,8 @@ export async function generatePatientBriefing(
         hospital: doc.hospital ?? null,
         sourceDocumentId: doc.id,
         sourceDocumentTitle: doc.title,
+        pageNumber: docPage,
+        mimeType: doc.mimeType ?? null,
       });
     } else if (doc.documentType === 'lab_report') {
       doctorTimeline.push({
@@ -415,6 +423,8 @@ export async function generatePatientBriefing(
         hospital: doc.hospital ?? null,
         sourceDocumentId: doc.id,
         sourceDocumentTitle: doc.title,
+        pageNumber: docPage,
+        mimeType: doc.mimeType ?? null,
       });
     }
   }
@@ -423,7 +433,7 @@ export async function generatePatientBriefing(
   doctorTimeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // 12. Evidence Citations
-  const citations: EvidenceCitation[] = docs.map((doc) => {
+  const citations: EvidenceCitation[] = docs.map((doc, i) => {
     const docDate = doc.documentDate
       ? new Date(doc.documentDate).toLocaleDateString('en-US', {
           month: 'short',
@@ -434,21 +444,45 @@ export async function generatePatientBriefing(
 
     const docDoctor = doc.doctorName ? doc.doctorName.trim() : null;
     const spec = detectSpecialty([doc.rawExtractedText, doc.hospital, doc.title].filter(Boolean).join(' '));
+    const pageNum = findPageNumber(doc.rawExtractedText);
 
     return {
+      index: i + 1,
       documentId: doc.id,
       documentTitle: doc.title,
+      fileName: doc.fileName ?? null,
+      mimeType: doc.mimeType ?? null,
       documentDate: docDate,
       documentType: doc.documentType,
+      pageNumber: pageNum,
       doctorName: docDoctor,
       doctorSpecialty: spec,
       hospital: doc.hospital ?? null,
-      excerpt: doc.summary || (doc.rawExtractedText ? doc.rawExtractedText.slice(0, 200) + '...' : 'Clinical record on file.'),
+      excerpt: doc.summary || (doc.rawExtractedText ? doc.rawExtractedText.slice(0, 240) + '...' : 'Clinical record on file.'),
       doctorAttributionEvidence: docDoctor
         ? `Attributed to ${docDoctor} based on documented signature/header on ${doc.title}.`
         : 'Doctor not identified in available records.',
     };
   });
+
+  const citationMap = new Map<string, number>(citations.map((c) => [c.documentId, c.index]));
+
+  // Link citation indices
+  for (const m of allMedications) {
+    m.citationIndex = citationMap.get(m.sourceDocumentId);
+  }
+  for (const l of attributedLabs) {
+    l.citationIndex = citationMap.get(l.sourceDocumentId);
+  }
+  for (const trend of labTrends) {
+    const matchingLab = attributedLabs.find(
+      (l) => (l.canonicalTestName || l.testName).toLowerCase() === (trend.canonicalTestName || trend.testName).toLowerCase()
+    );
+    if (matchingLab) {
+      trend.sourceDocumentId = matchingLab.sourceDocumentId;
+      trend.citationIndex = citationMap.get(matchingLab.sourceDocumentId);
+    }
+  }
 
   // 13. Conditions and Allergies mapping
   const conditions: BriefingCondition[] = diagRows.map((d) => {
@@ -465,6 +499,9 @@ export async function generatePatientBriefing(
       hospital: parentDoc?.hospital ?? null,
       sourceDocumentId: d.documentId,
       sourceDocumentTitle: parentDoc?.title ?? 'Medical Document',
+      citationIndex: citationMap.get(d.documentId),
+      pageNumber: findPageNumber(parentDoc?.rawExtractedText, d.condition),
+      mimeType: parentDoc?.mimeType ?? null,
     };
   });
 
@@ -475,7 +512,9 @@ export async function generatePatientBriefing(
       allergyType: a.allergyType ?? null,
       severity: a.severity ?? null,
       reaction: a.reaction ?? null,
+      sourceDocumentId: a.documentId ?? null,
       sourceDocumentTitle: parentDoc?.title ?? null,
+      citationIndex: a.documentId ? citationMap.get(a.documentId) : undefined,
     };
   });
 

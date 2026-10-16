@@ -6,6 +6,7 @@ import {
   buildDoctorProfiles,
   attributePrescription,
   attributeLabResult,
+  findPageNumber,
 } from './doctor-tracker';
 import { generateBriefingPdf } from './pdf-generator';
 import type { PatientBriefingData } from './types';
@@ -369,6 +370,7 @@ describe('PDF Briefing Generator', () => {
       ],
       citations: [
         {
+          index: 1,
           documentId: 'doc-1',
           documentTitle: 'Initial Consultation',
           documentDate: '15 Jan 2025',
@@ -394,6 +396,249 @@ describe('PDF Briefing Generator', () => {
     expect(pdfString).toContain('/Type /Pages');
     expect(pdfString).toContain('TABEEB HEALTH COMPANION');
     expect(pdfString).toContain('Kamran Akram');
-    expect(pdfString).toContain('%%EOF');
+    expect(pdfString).toContain('Page 1 of');
+    expect(pdfString).toContain('CLINICAL LEGAL DISCLAIMER');
+  });
+
+  it('handles long table cell text wrapping and multi-page table pagination gracefully', () => {
+    // Generate a briefing with many doctors and long strings that trigger multi-page splitting and cell wrapping
+    const longBriefing: PatientBriefingData = {
+      generatedAt: new Date().toISOString(),
+      dateRange: { from: '2024-01-01', to: '2026-10-15', isCoveredAllTime: true },
+      patient: {
+        id: 'patient-complex-999',
+        name: 'Fatima Zahra Khan',
+        email: 'fatima@example.com',
+        preferredLanguage: 'en',
+      },
+      clinicalSummary: 'Patient with multiple chronic conditions and complex polypharmacy across multiple specialty consultations.',
+      conditions: Array.from({ length: 8 }, (_, i) => ({
+        id: `c-${i}`,
+        condition: `Chronic Condition Diagnosed with Detailed Clinical Manifestations #${i + 1}`,
+        icd10Code: `E1${i}.9`,
+        severity: 'Moderate to High',
+        assertionStatus: 'confirmed',
+        diagnosedDate: '2024-06-12',
+        diagnosingDoctor: 'Dr. Muhammad Tariq Khan',
+        hospital: 'Lady Reading Hospital Peshawar Medical Complex Regional Healthcare Center',
+        sourceDocumentId: `doc-${i}`,
+        sourceDocumentTitle: `Comprehensive Discharge Evaluation Summary Report #${i + 1}`,
+        citationIndex: i + 1,
+      })),
+      doctors: Array.from({ length: 12 }, (_, i) => ({
+        id: `doc-prof-${i}`,
+        name: `Muhammad Tariq Khan ${i + 1}`,
+        normalizedName: `muhammad tariq khan ${i + 1}`,
+        specialty: 'Internal Medicine, Pulmonology & Critical Care',
+        hospital: 'Lady Reading Hospital Peshawar; THQ Hospital Kabul; Khyber Teaching Hospital',
+        contactInfo: '0300-1234567 / 091-5844444',
+        sourceType: 'extracted',
+        isVerified: i % 2 === 0,
+        sourceDocumentId: `doc-${i}`,
+        sourceDocumentTitle: `Clinical Consultation Note #${i + 1}`,
+        consultationDates: ['2025-03-10'],
+        prescriptionsCount: 3,
+        labOrdersCount: 2,
+        notes: null,
+      })),
+      currentMedications: Array.from({ length: 8 }, (_, i) => ({
+        id: `med-${i}`,
+        name: `Extended-Release Glucophage Formulation #${i + 1}`,
+        genericName: 'Metformin Hydrochloride Controlled-Release Polymer',
+        dosage: '1000mg twice daily with evening meals followed by fasting check',
+        frequency: 'Every 12 hours after full meal',
+        duration: 'Indefinite ongoing maintenance',
+        route: 'oral',
+        prescribedDate: '2025-01-10',
+        status: 'active',
+        prescribingDoctor: {
+          name: 'Dr. Muhammad Tariq Khan',
+          specialty: 'Endocrinology and Metabolic Disorders',
+          hospital: 'Lady Reading Hospital Peshawar',
+          role: 'prescribing',
+          isIdentified: true,
+        },
+        hospital: 'Lady Reading Hospital Peshawar',
+        sourceDocumentId: `doc-${i}`,
+        sourceDocumentTitle: `Longitudinal Multi-Center Prescription Document #${i + 1}`,
+        sourceDocumentDate: '2025-01-10',
+        sourceCitation: `Prescription #${i + 1}`,
+        citationIndex: i + 1,
+      })),
+      historicalMedications: [],
+      allergies: [
+        {
+          allergen: 'Ceftriaxone Sodium Complex',
+          allergyType: 'drug',
+          severity: 'severe',
+          reaction: 'Severe urticaria and facial angioedema',
+        },
+      ],
+      recentLabResults: [
+        {
+          id: 'rl-1',
+          testName: 'High Sensitivity C-Reactive Protein (hs-CRP)',
+          canonicalTestName: 'hs_crp',
+          value: '8.4',
+          numericValue: 8.4,
+          unit: 'mg/L',
+          referenceRange: '0.0 - 3.0',
+          isAbnormal: true,
+          testDate: '2026-09-01',
+          orderingDoctor: { name: 'Dr. Tariq Khan', specialty: 'Internal Medicine', isIdentified: true },
+          performingFacility: 'Chughtai Diagnostic Center Peshawar',
+          sourceDocumentId: 'doc-1',
+          sourceDocumentTitle: 'Lab Report 1',
+          sourceCitation: 'Lab Report',
+          citationIndex: 1,
+        },
+      ],
+      labTrends: Array.from({ length: 6 }, (_, i) => ({
+        testName: `High Sensitivity Glycated Hemoglobin Fraction Analyte #${i + 1}`,
+        canonicalTestName: `hba1c_${i}`,
+        unit: 'mmol/mol',
+        referenceRange: '20 - 42 mmol/mol',
+        latestValue: '68',
+        latestNumeric: 68,
+        latestDate: '2026-09-01',
+        latestIsAbnormal: true,
+        previousValue: '54',
+        previousNumeric: 54,
+        previousDate: '2025-12-01',
+        delta: 14,
+        percentageChange: 25.9,
+        direction: 'worsened',
+        clinicalNote: 'Marked glycemic elevation over the past 9 months requiring therapeutic adjustment.',
+        readingsCount: 3,
+        citationIndex: 1,
+      })),
+      consultationsAndPlans: [
+        {
+          id: 'cp-1',
+          date: '2026-09-01',
+          doctorName: 'Dr. Muhammad Tariq Khan',
+          specialty: 'Endocrinology',
+          hospital: 'Lady Reading Hospital Peshawar',
+          planSummary: 'Initiate dual oral antihyperglycemic therapy and recheck fasting lipids and renal profile in 6 weeks.',
+          followUpInstructions: 'Return in 6 weeks with fresh fasting glucose log and serum creatinine.',
+          sourceDocumentTitle: 'Consultation Note',
+        },
+      ],
+      treatmentConflicts: [],
+      uncertainties: [
+        {
+          category: 'missing_records',
+          detail: 'No comprehensive echocardiogram documented in uploaded records.',
+          impact: 'Assess left ventricular function prior to initiating beta-blocker titration.',
+        },
+      ],
+      consultationQuestions: [
+        {
+          id: 'q-1',
+          category: 'treatment_plan',
+          question: 'Should the Metformin dose be reduced given borderline renal clearance?',
+          rationale: 'Recent serum creatinine trending towards upper limit of normal.',
+          relevantDoctor: 'Dr. Muhammad Tariq Khan',
+          sourceCitations: ['Prescription 1'],
+        },
+      ],
+      doctorTimeline: Array.from({ length: 8 }, (_, i) => ({
+        id: `ev-${i}`,
+        date: `2025-0${(i % 9) + 1}-15T00:00:00.000Z`,
+        type: 'consultation',
+        title: `Comprehensive Outpatient Clinical Evaluation & Treatment Adjustment #${i + 1}`,
+        description: 'Detailed clinical assessment including review of laboratory markers and vital signs.',
+        doctorName: 'Dr. Muhammad Tariq Khan',
+        doctorSpecialty: 'Internal Medicine & Endocrinology',
+        hospital: 'Lady Reading Hospital Peshawar Regional Medical Center',
+        sourceDocumentId: `doc-${i}`,
+        sourceDocumentTitle: `Clinical Note #${i + 1}`,
+      })),
+      citations: Array.from({ length: 8 }, (_, i) => ({
+        index: i + 1,
+        documentId: `doc-uuid-${i}`,
+        documentTitle: `Detailed Hospital Prescription and Lab Investigation Record with Full Clinical Notes #${i + 1}`,
+        documentDate: '15 Jan 2025',
+        documentType: 'prescription',
+        doctorName: 'Dr. Muhammad Tariq Khan',
+        doctorSpecialty: 'Internal Medicine & Endocrinology',
+        hospital: 'Lady Reading Hospital Peshawar',
+        excerpt: 'Patient advised to strictly comply with prescribed regimen and repeat HbA1c in 3 months. In case of adverse reactions, report immediately to emergency department.',
+        doctorAttributionEvidence: 'Stamp and signature on prescription form.',
+      })),
+      documentCount: 8,
+      isPartial: false,
+    };
+
+    const pdfBuffer = generateBriefingPdf(longBriefing);
+    expect(Buffer.isBuffer(pdfBuffer)).toBe(true);
+
+    const pdfContent = pdfBuffer.toString('ascii');
+    // Multi-page document should have multiple pages
+    expect(pdfContent).toMatch(/\/Count [2-9]/); // At least 2 pages
+    // Header should repeat on page > 1
+    expect(pdfContent).toContain('Tabeeb Clinical Briefing');
+    expect(pdfContent).toContain('Confidential Clinical Record');
+    // Footers should include Page X of Y
+    expect(pdfContent).toMatch(/Page \d+ of \d+/);
+    // All sections should have dynamic section headers
+    expect(pdfContent).toContain('1. EXECUTIVE CLINICAL SUMMARY');
+    expect(pdfContent).toContain('ATTENDING DOCTORS & CARE TEAM');
+    expect(pdfContent).toContain('CURRENT MEDICATIONS & PRESCRIBING ATTRIBUTION');
+    expect(pdfContent).toContain('RECENT LABORATORY RESULTS');
+    expect(pdfContent).toContain('LABORATORY TEST RESULTS & LONGITUDINAL TRENDS');
+    expect(pdfContent).toContain('CONSULTATION SUMMARIES & CARE PLANS');
+    expect(pdfContent).toContain('DOCUMENTATION GAPS & CLINICAL UNCERTAINTIES');
+    expect(pdfContent).toContain('EVIDENCE CITATIONS & SOURCE DOCUMENT PROVENANCE');
+    expect(pdfContent).toContain('CLINICAL LEGAL DISCLAIMER');
+    expect(pdfContent).toContain('%%EOF');
   });
 });
+
+describe('Page Detection & Clinical Document Provenance', () => {
+  it('locates entity within multi-page OCR raw text with page markers', () => {
+    const rawText = `
+--- Page 1 of 3 ---
+Hospital Admission Notes
+Patient presented with chest pain.
+Dr. Tariq Mahmood
+
+--- Page 2 of 3 ---
+Prescription Order
+Rx Atorvastatin 20mg nocte
+Rx Metformin 500mg bd
+
+--- Page 3 of 3 ---
+Discharge Instructions
+Follow up in 2 weeks.
+`;
+
+    expect(findPageNumber(rawText, 'Atorvastatin')).toBe(2);
+    expect(findPageNumber(rawText, 'Metformin')).toBe(2);
+    expect(findPageNumber(rawText, 'Admission Notes')).toBe(1);
+    expect(findPageNumber(rawText, 'Follow up')).toBe(3);
+  });
+
+  it('handles various common OCR page header formats', () => {
+    const altText = `
+[Page 1]
+Dr. Sarah Khan
+Consultation Note
+
+-- Page 2 --
+Diagnosis: Type 2 Diabetes Mellitus
+Prescribed Glimepiride 2mg
+`;
+
+    expect(findPageNumber(altText, 'Glimepiride')).toBe(2);
+    expect(findPageNumber(altText, 'Consultation Note')).toBe(1);
+  });
+
+  it('returns null when text does not contain page delimiters without fabricating page numbers', () => {
+    const singleScanText = 'Prescription: Dr. Tariq Mahmood. Tab Panadol 500mg tds.';
+    expect(findPageNumber(singleScanText, 'Panadol')).toBeNull();
+    expect(findPageNumber(undefined, 'Panadol')).toBeNull();
+    expect(findPageNumber(singleScanText, 'NonExistentDrug')).toBeNull();
+  });
+});
+

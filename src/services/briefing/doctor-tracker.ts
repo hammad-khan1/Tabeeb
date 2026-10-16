@@ -65,9 +65,47 @@ export function extractContactInfo(text: string | null | undefined): string | nu
   return contacts.length > 0 ? Array.from(new Set(contacts)).join(' · ') : null;
 }
 
+export function findPageNumber(rawText?: string | null, targetTerm?: string): number | null {
+  if (!rawText) return null;
+
+  // Patterns for page markers generated during OCR or multi-page text extraction:
+  // e.g. "--- Page 1 of 3 ---", "-- Page 1 --", "[Page 1]", "Page 1 of 3"
+  const pageHeaderPattern = /(?:[-=]{2,}\s*Page\s*(\d+)(?:\s*of\s*\d+)?\s*[-=]{2,}|\[\s*Page\s*(\d+)\s*(?:of\s*\d+)?\s*\]|\bPage\s*(\d+)\s+of\s+\d+\b)/gi;
+
+  const matches = Array.from(rawText.matchAll(pageHeaderPattern));
+  if (matches.length === 0) return null;
+
+  if (!targetTerm || targetTerm.trim().length < 2) {
+    const firstMatch = matches[0];
+    const numStr = firstMatch[1] || firstMatch[2] || firstMatch[3];
+    return numStr ? parseInt(numStr, 10) : 1;
+  }
+
+  const lowerTerm = targetTerm.toLowerCase();
+
+  for (let i = 0; i < matches.length; i++) {
+    const currentMatch = matches[i];
+    const pageNumStr = currentMatch[1] || currentMatch[2] || currentMatch[3];
+    const pageNum = pageNumStr ? parseInt(pageNumStr, 10) : i + 1;
+
+    const startIndex = (currentMatch.index ?? 0) + currentMatch[0].length;
+    const nextMatch = matches[i + 1];
+    const endIndex = nextMatch?.index !== undefined ? nextMatch.index : rawText.length;
+
+    const pageContent = rawText.slice(startIndex, endIndex);
+    if (pageContent.toLowerCase().includes(lowerTerm)) {
+      return pageNum;
+    }
+  }
+
+  return null;
+}
+
 interface RawDocumentLike {
   id: string;
   title: string;
+  fileName?: string | null;
+  mimeType?: string | null;
   doctorName?: string | null;
   hospital?: string | null;
   documentDate?: Date | string | null;
@@ -249,6 +287,8 @@ export function attributePrescription(
     sourceDocumentTitle: doc?.title ?? 'Medical Record',
     sourceDocumentDate: docDate,
     sourceCitation: `${doc?.title ?? 'Document'}${docDate ? ` (${docDate})` : ''}`,
+    pageNumber: findPageNumber(doc?.rawExtractedText, medication.name),
+    mimeType: doc?.mimeType ?? null,
     changesNote:
       status === 'discontinued'
         ? 'Discontinued per records'
@@ -324,5 +364,7 @@ export function attributeLabResult(
     sourceDocumentId: doc?.id ?? '',
     sourceDocumentTitle: doc?.title ?? 'Laboratory Report',
     sourceCitation: `${doc?.title ?? 'Lab Report'}${docDate ? ` (${docDate})` : ''}`,
+    pageNumber: findPageNumber(doc?.rawExtractedText, lab.testName),
+    mimeType: doc?.mimeType ?? null,
   };
 }
