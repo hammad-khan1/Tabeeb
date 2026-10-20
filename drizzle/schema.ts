@@ -270,3 +270,41 @@ export const chatMessages = pgTable('chat_messages', {
   index('chat_messages_user_conv_idx').on(table.userId, table.conversationId),
   index('chat_messages_created_idx').on(table.createdAt),
 ]);
+
+export const patientDoctors = pgTable('patient_doctors', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  normalizedName: varchar('normalized_name', { length: 255 }),
+  specialty: varchar('specialty', { length: 255 }),
+  hospital: varchar('hospital', { length: 500 }),
+  contactInfo: text('contact_info'),
+  sourceType: varchar('source_type', { length: 50 }).default('extracted'),
+  sourceDocumentId: uuid('source_document_id').references(() => documents.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('patient_doctors_user_idx').on(table.userId),
+  index('patient_doctors_user_name_idx').on(table.userId, table.name),
+]);
+
+export const briefingShareLinks = pgTable('briefing_share_links', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token: varchar('token', { length: 255 }).notNull().unique(),
+  title: varchar('title', { length: 500 }),
+  documentIds: jsonb('document_ids').$type<string[]>().notNull(),
+  includedSections: jsonb('included_sections').$type<string[]>().default([]),
+  dateRangeFrom: timestamp('date_range_from'),
+  dateRangeTo: timestamp('date_range_to'),
+  expiresAt: timestamp('expires_at').notNull(),
+  isActive: boolean('is_active').default(true),
+  viewCount: integer('view_count').default(0),
+  lastViewedAt: timestamp('last_viewed_at'),
+  revokedAt: timestamp('revoked_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('briefing_share_links_user_idx').on(table.userId),
+  index('briefing_share_links_token_idx').on(table.token),
+]);

@@ -21,6 +21,11 @@ export async function GET(
     consume('file', userId);
     const { id } = await params;
 
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
     const [doc] = await getDb()
       .select({
         fileName: documents.fileName,
@@ -40,7 +45,10 @@ export async function GET(
       data = await getStorage().read(doc.storagePath);
     } catch {
       return NextResponse.json(
-        { error: 'The stored file for this document is missing.' },
+        {
+          error: 'The stored file for this document is missing.',
+          code: 'FILE_MISSING',
+        },
         { status: 410 }
       );
     }
