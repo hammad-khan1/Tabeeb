@@ -201,11 +201,14 @@ function applyClinicalContext(
 
 export async function reconcileExtraction(
   text: string,
-  extraction: ValidatedExtraction
+  extraction: ValidatedExtraction,
+  options: { skipDrugNormalization?: boolean } = {}
 ): Promise<ReconciliationResult> {
   const [entities, drugs] = await Promise.all([
     extractMedicalEntities(text),
-    applyDrugNormalization(extraction),
+    options.skipDrugNormalization
+      ? Promise.resolve({ medications: extraction.medications, identifications: [] })
+      : applyDrugNormalization(extraction),
   ]);
 
   const withDrugs: ValidatedExtraction = { ...extraction, medications: drugs.medications };

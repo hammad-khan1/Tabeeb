@@ -12,6 +12,8 @@
  * summarizer.
  */
 
+import { MEDICATION_STRINGS } from './medication-i18n';
+
 export const UI_LOCALES = ['en', 'ur'] as const;
 export type Locale = (typeof UI_LOCALES)[number];
 
@@ -31,6 +33,7 @@ export function directionFor(locale: Locale): 'rtl' | 'ltr' {
  * prescription, so translating them would make them harder to match, not easier.
  */
 const STRINGS = {
+  ...MEDICATION_STRINGS,
   // ── Navigation ───────────────────────────────────────────────────────────
   'nav.dashboard': { en: 'Dashboard', ur: 'ڈیش بورڈ' },
   'nav.documents': { en: 'Documents', ur: 'دستاویزات' },

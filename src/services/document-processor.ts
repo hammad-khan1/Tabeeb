@@ -4,7 +4,7 @@ import {
   users,
   documents,
   documentChunks,
-  medications,
+  medications, medicationAudit,
   diagnoses,
   labResults,
   allergies,
@@ -28,6 +28,11 @@ import { parseMedicalValue, isOutOfRange } from '@/lib/medical-values';
 import { generateDocumentSummary } from '@/services/summarizer';
 import { estimateTokenCount } from '@/lib/tokens';
 import { classifyModelFailure, withModelRetry } from '@/lib/model-errors';
+import { prepareMedicationRows, type PreparedMedicationRow } from '@/services/medications/observations';
+import {
+  lockMedicationOwner, synchronizeMedicationObservations, invalidateMedicationFindings,
+} from '@/services/medications/repository';
+import { badRequest, notFound } from '@/lib/api-error';
 
 // Re-exported for callers that already import it from here.
 export { estimateTokenCount };
@@ -68,11 +73,25 @@ Return ONLY valid JSON matching this exact schema:
     {
       "name": "brand or common name",
       "genericName": "generic name if identifiable",
+      "brandName": "brand only if documented",
       "dosage": "e.g. 500mg",
+      "strength": "product strength exactly as written",
+      "unit": "strength unit if present",
+      "form": "tablet, capsule, extended-release tablet, etc. if present",
+      "doseAmount": "amount per administration, e.g. one tablet",
       "frequency": "e.g. twice daily, BD, TDS",
       "duration": "e.g. 7 days",
       "route": "oral, IV, IM, topical, etc.",
-      "isActive": true
+      "startDate": "date text exactly as documented, including approximate dates",
+      "endDate": "date text exactly as documented",
+      "prescriber": "named prescribing clinician only",
+      "excerpt": "verbatim source line containing this medicine and directions",
+      "instructions": "verbatim medication directions",
+      "status": "prescribed_unconfirmed/historical/discontinued/changed/unknown",
+      "explicitStop": false,
+      "explicitReplacement": "replacement only if source explicitly states it",
+      "uncertain": false,
+      "durationExpected": false
     }
   ],
   "diagnoses": [
@@ -115,6 +134,11 @@ Rules:
 - For lab results, set isAbnormal=true only when explicitly flagged or clearly outside reference range
 - Preserve original Urdu text alongside transliteration when present
 - Do NOT invent data that is not in the text
+- A prescription does not prove current use. Never infer a medicine was discontinued because it is missing elsewhere. Only use discontinued/changed for explicit source instructions.
+- Preserve immediate-release versus extended-release forms; strength and dose amount are different facts.
+- Do not supply RxCUIs or infer generic ingredients from model knowledge. Generic and brand names must be explicitly documented.
+- Copy excerpt/instructions exactly; never fabricate a quote or page number. Mark unclear medicines uncertain.
+- Set durationExpected only when the text explicitly describes a duration or course; not every medicine requires a duration.
 - If a date is not found, omit the field rather than guessing
 - The text may come from OCR of a handwritten form and can contain [unclear: ...] markers. Extract the entity anyway and keep the marker inside the relevant field so the patient can verify it. Never substitute a guess for an unclear drug name or number.
 - Expand clinical shorthand into the correct field: OD/BD/BID/TDS/TID/QID/HS/SOS/PRN belong in "frequency", PO/IV/IM/SC belong in "route", and Tab/Cap/Syp/Inj describe the dosage form`;

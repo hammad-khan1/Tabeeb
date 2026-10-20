@@ -1,13 +1,29 @@
 export interface Medication {
   name: string;
   genericName?: string;
+  brandName?: string;
   dosage?: string;
+  strength?: string;
+  unit?: string;
+  form?: string;
+  doseAmount?: string;
   frequency?: string;
   duration?: string;
   route?: string;
   rxnormId?: string;
   isActive?: boolean;
   prescribedDate?: string;
+  startDate?: string;
+  endDate?: string;
+  prescriber?: string;
+  sourcePage?: number;
+  excerpt?: string;
+  instructions?: string;
+  uncertain?: boolean;
+  status?: 'prescribed_unconfirmed' | 'historical' | 'discontinued' | 'changed' | 'unknown';
+  explicitStop?: boolean;
+  explicitReplacement?: string;
+  durationExpected?: boolean;
 }
 
 export interface Diagnosis {

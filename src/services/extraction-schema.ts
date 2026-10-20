@@ -69,14 +69,30 @@ function arrayOf<T extends z.ZodTypeAny>(element: T) {
 
 const medicationSchema = z.object({
   name: optionalString,
+  brandName: optionalString,
   genericName: optionalString,
   dosage: optionalString,
+  strength: optionalString,
+  unit: optionalString,
+  form: optionalString,
+  doseAmount: optionalString,
   frequency: optionalString,
   duration: optionalString,
   route: optionalString,
   rxnormId: optionalString,
   isActive: optionalBoolean,
   prescribedDate: optionalString,
+  startDate: optionalString,
+  endDate: optionalString,
+  prescriber: optionalString,
+  sourcePage: optionalNumber,
+  excerpt: optionalString,
+  instructions: optionalString,
+  uncertain: optionalBoolean,
+  status: z.enum(['prescribed_unconfirmed', 'historical', 'discontinued', 'changed', 'unknown']).optional().catch(undefined),
+  explicitStop: optionalBoolean,
+  explicitReplacement: optionalString,
+  durationExpected: optionalBoolean,
 });
 
 /**

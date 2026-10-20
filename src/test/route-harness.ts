@@ -1,7 +1,8 @@
-import { config } from 'dotenv';
 import { eq, inArray } from 'drizzle-orm';
 import { vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { isolatedTestDatabaseUrl } from './database-safety';
+import type { Database } from '@/lib/db';
 
 /**
  * Harness for route-level tests, run against a real database.
@@ -17,9 +18,10 @@ import { NextRequest } from 'next/server';
  * process. `actAs()` chooses whose requests these are.
  */
 
-config({ path: '.env.local' });
-
-export const HAS_DATABASE = Boolean(process.env.DATABASE_URL);
+// Never load the application's .env.local in a mutating test process.
+const isolatedUrl = isolatedTestDatabaseUrl(process.env);
+export const HAS_DATABASE = isolatedUrl !== null;
+if (isolatedUrl) process.env.DATABASE_URL = isolatedUrl;
 
 /** Namespaced so a failed run cannot collide with real data or another run. */
 const RUN = `test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -89,7 +91,9 @@ vi.mock('@/services/processing-queue', () => ({
 const { getDb } = await import('@/lib/db');
 const schema = await import('../../drizzle/schema');
 
-export const db = getDb();
+export const db: Database = HAS_DATABASE ? getDb() : new Proxy({} as Database, {
+  get() { throw new Error('Database tests are disabled. Configure an isolated local test database explicitly.'); },
+});
 export const tables = schema;
 
 export async function seedUsers(): Promise<void> {

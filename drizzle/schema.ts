@@ -1,6 +1,6 @@
 import {
   pgTable, text, timestamp, uuid, varchar, integer, boolean, jsonb,
-  pgEnum, vector, index, doublePrecision,
+  pgEnum, vector, index, doublePrecision, uniqueIndex, foreignKey,
 } from 'drizzle-orm/pg-core';
 
 export const documentTypeEnum = pgEnum('document_type', [
@@ -63,6 +63,7 @@ export const documents = pgTable('documents', {
   // The app's most common read: a user's documents, newest clinical date first.
   // Ordering was falling back to the single-column indexes and re-sorting.
   index('documents_user_date_idx').on(table.userId, table.documentDate.desc()),
+  uniqueIndex('documents_id_user_unique').on(table.id, table.userId),
 ]);
 
 export const documentChunks = pgTable('document_chunks', {
@@ -93,6 +94,15 @@ export const medications = pgTable('medications', {
   rxnormId: varchar('rxnorm_id', { length: 50 }),
   isActive: boolean('is_active').default(true),
   prescribedDate: timestamp('prescribed_date'),
+  /** Original extracted observation. Patient corrections never overwrite this. */
+  observation: jsonb('observation').$type<Record<string, unknown>>(),
+  /** Deterministic within a source document; null only for pre-engine legacy rows. */
+  sourceKey: varchar('source_key', { length: 128 }),
+  sourceActive: boolean('source_active').notNull().default(true),
+  patientStatus: varchar('patient_status', { length: 40 }),
+  corrections: jsonb('corrections').$type<Record<string, string | null>>(),
+  confirmedAt: timestamp('confirmed_at'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('medications_user_id_idx').on(table.userId),
@@ -100,6 +110,48 @@ export const medications = pgTable('medications', {
   // Active medicines lead the chat profile, the interaction check and the history
   // summary, so the filter and the sort belong in one index.
   index('medications_user_active_idx').on(table.userId, table.isActive, table.prescribedDate.desc()),
+  uniqueIndex('medications_document_source_unique').on(table.documentId, table.sourceKey),
+  uniqueIndex('medications_id_user_unique').on(table.id, table.userId),
+  index('medications_user_source_active_idx').on(table.userId, table.sourceActive),
+  foreignKey({
+    name: 'medications_document_owner_fk',
+    columns: [table.documentId, table.userId],
+    foreignColumns: [documents.id, documents.userId],
+  }).onDelete('cascade'),
+]);
+
+export const medicationFindings = pgTable('medication_findings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  findingKey: varchar('finding_key', { length: 128 }).notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  /** Retired findings remain auditable but cannot be presented as current. */
+  active: boolean('active').notNull().default(true),
+  reviewStatus: varchar('review_status', { length: 32 }).notNull().default('open'),
+  resolutionNote: text('resolution_note'),
+  detectedAt: timestamp('detected_at').notNull().defaultNow(),
+  lastEvaluatedAt: timestamp('last_evaluated_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('medication_findings_owner_key_unique').on(table.userId, table.findingKey),
+  index('medication_findings_owner_active_idx').on(table.userId, table.active),
+  uniqueIndex('medication_findings_id_user_unique').on(table.id, table.userId),
+]);
+
+export const medicationAudit = pgTable('medication_audit', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  // Target IDs are retained for audit history after source deletion; all access is owner-scoped.
+  medicationId: uuid('medication_id'),
+  findingId: uuid('finding_id'),
+  action: varchar('action', { length: 64 }).notNull(),
+  before: jsonb('before').$type<Record<string, unknown>>(),
+  after: jsonb('after').$type<Record<string, unknown>>(),
+  note: text('note'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+  index('medication_audit_owner_date_idx').on(table.userId, table.createdAt.desc()),
+  index('medication_audit_medication_idx').on(table.userId, table.medicationId),
 ]);
 
 export const diagnoses = pgTable('diagnoses', {
