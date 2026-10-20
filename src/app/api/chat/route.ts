@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, or, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getDb } from '@/lib/db';
 import { getCurrentUserId } from '@/lib/auth';
@@ -10,6 +10,7 @@ import { retrieveRelevantChunks } from '@/services/rag/retriever';
 import { buildQaPrompt } from '@/services/rag/prompt-builder';
 import { rewriteForRetrieval, type ConversationTurn } from '@/services/rag/query-rewriter';
 import { streamAnswer } from '@/services/rag/answer-streamer';
+import { resolveSourceScope } from '@/services/rag/source-scope-resolver';
 import {
   medications,
   allergies,
@@ -35,11 +36,6 @@ const HISTORY_TURNS = 8;
 const PROFILE_LIMIT = 100;
 
 // ── Response cache ──────────────────────────────────────────────────────────
-//
-// Still in-process, so it is per-instance and empty after a cold start. What is fixed
-// is correctness: the key now includes a fingerprint of the user's corpus, so
-// uploading or deleting a document invalidates every cached answer for that user
-// instead of serving a pre-upload "I couldn't find that" for the next five minutes.
 
 interface CacheEntry {
   content: string;
@@ -63,9 +59,9 @@ async function corpusFingerprint(userId: string): Promise<string> {
   return `${row?.count ?? 0}:${row?.latest ?? 'none'}`;
 }
 
-function getCacheKey(userId: string, message: string, fingerprint: string): string {
+function getCacheKey(userId: string, message: string, fingerprint: string, scopeKey: string): string {
   const normalized = message.trim().toLowerCase().replace(/\s+/g, ' ');
-  return crypto.createHash('sha256').update(`${userId}:${fingerprint}:${normalized}`).digest('hex');
+  return crypto.createHash('sha256').update(`${userId}:${fingerprint}:${scopeKey}:${normalized}`).digest('hex');
 }
 
 function getCachedResponse(key: string): CacheEntry | null {
@@ -111,9 +107,13 @@ async function persistTurn(
 async function loadHistory(
   userId: string,
   conversationId: string
-): Promise<ConversationTurn[]> {
+): Promise<Array<ConversationTurn & { sources?: Source[] }>> {
   const rows = await getDb()
-    .select({ role: chatMessages.role, content: chatMessages.content })
+    .select({
+      role: chatMessages.role,
+      content: chatMessages.content,
+      sources: chatMessages.sources,
+    })
     .from(chatMessages)
     .where(
       and(eq(chatMessages.userId, userId), eq(chatMessages.conversationId, conversationId))
@@ -123,9 +123,12 @@ async function loadHistory(
 
   return rows
     .reverse()
-    .filter((row): row is { role: 'user' | 'assistant'; content: string } =>
-      row.role === 'user' || row.role === 'assistant'
-    );
+    .filter((row) => row.role === 'user' || row.role === 'assistant')
+    .map((row) => ({
+      role: row.role as 'user' | 'assistant',
+      content: row.content,
+      sources: (row.sources as Source[] | null) ?? undefined,
+    }));
 }
 
 function sse(payload: unknown): Uint8Array {
@@ -144,7 +147,7 @@ export async function POST(request: NextRequest) {
     const userId = await getCurrentUserId();
     consume('chat', userId);
 
-    const { message, conversationId: inputConversationId } = await parseJsonBody(
+    const { message, conversationId: inputConversationId, scope: requestedScope } = await parseJsonBody(
       chatSchema,
       request
     );
@@ -152,21 +155,80 @@ export async function POST(request: NextRequest) {
     const conversationId = inputConversationId || crypto.randomUUID();
     const isExisting = Boolean(inputConversationId);
 
-    // Recorded immediately. Previously both messages were written only after the
-    // stream completed, so an aborted or empty generation discarded the question the
-    // patient had already asked.
+    // Record user message immediately
     await persistTurn(userId, conversationId, 'user', message);
 
     const history = isExisting ? await loadHistory(userId, conversationId) : [];
-    // The just-persisted question would otherwise appear twice.
+    // The just-persisted question would otherwise appear twice
     const priorTurns = history.filter(
       (turn, index) => !(index === history.length - 1 && turn.role === 'user' && turn.content === message)
     );
 
-    const fingerprint = await corpusFingerprint(userId);
-    const cacheKey = getCacheKey(userId, message, fingerprint);
+    // Find the last assistant turn to check for inherited sources
+    const lastAssistantTurn = [...priorTurns].reverse().find((t) => t.role === 'assistant');
+    const priorTurnSources = (lastAssistantTurn?.sources as Source[]) ?? [];
 
-    // Only first turns are cacheable: a follow-up's meaning depends on the thread.
+    // Resolve source scope intelligently
+    const resolvedScope = await resolveSourceScope({
+      userId,
+      message,
+      requestedScope,
+      priorTurns,
+      priorTurnSources,
+    });
+
+    // 1. If scope requires clarification from the patient
+    if (resolvedScope.clarification) {
+      const clarification = resolvedScope.clarification;
+      await persistTurn(userId, conversationId, 'assistant', clarification.question, []);
+
+      const readable = new ReadableStream({
+        start(controller) {
+          controller.enqueue(sse({
+            conversationId,
+            clarification,
+            content: clarification.question,
+            scope: {
+              mode: resolvedScope.mode,
+              label: resolvedScope.label,
+            },
+          }));
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      return new Response(readable, { headers: SSE_HEADERS });
+    }
+
+    // 2. If document is unavailable (e.g. pending processing or failed)
+    if (resolvedScope.unavailableReason) {
+      await persistTurn(userId, conversationId, 'assistant', resolvedScope.unavailableReason, []);
+
+      const readable = new ReadableStream({
+        start(controller) {
+          controller.enqueue(sse({
+            conversationId,
+            content: resolvedScope.unavailableReason,
+            scope: {
+              mode: resolvedScope.mode,
+              label: resolvedScope.label,
+              documentIds: resolvedScope.documentIds,
+            },
+          }));
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      return new Response(readable, { headers: SSE_HEADERS });
+    }
+
+    const scopeKey = `${resolvedScope.mode}:${(resolvedScope.documentIds || []).sort().join(',')}`;
+    const fingerprint = await corpusFingerprint(userId);
+    const cacheKey = getCacheKey(userId, message, fingerprint, scopeKey);
+
+    // Only first turns are cacheable
     const cached = priorTurns.length === 0 ? getCachedResponse(cacheKey) : null;
 
     if (cached) {
@@ -174,10 +236,15 @@ export async function POST(request: NextRequest) {
 
       const readable = new ReadableStream({
         start(controller) {
-          controller.enqueue(sse({ conversationId, sources: cached.sources }));
-          // Sent whole. The previous version replayed it word by word with a 10ms
-          // sleep per word — about four seconds of fake typing for text already in
-          // memory.
+          controller.enqueue(sse({
+            conversationId,
+            sources: cached.sources,
+            scope: {
+              mode: resolvedScope.mode,
+              documentIds: resolvedScope.documentIds,
+              label: resolvedScope.label,
+            },
+          }));
           controller.enqueue(sse({ content: cached.content }));
           controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
           controller.close();
@@ -187,28 +254,77 @@ export async function POST(request: NextRequest) {
       return new Response(readable, { headers: SSE_HEADERS });
     }
 
-    // Resolves "what about the second one?" into something retrievable.
+    // Resolves pronouns and references into a standalone query
     const retrievalQuery = await rewriteForRetrieval(message, priorTurns);
-    const chunks = await retrieveRelevantChunks(userId, retrievalQuery);
 
-    const [meds, allergyRows, [user]] = await Promise.all([
+    // Filter chunks strictly by resolvedScope.documentIds at retrieval layer
+    const chunks = await retrieveRelevantChunks(userId, retrievalQuery, {
+      documentIds: resolvedScope.documentIds,
+    });
+
+    const scopedDocIds = resolvedScope.documentIds;
+    const isScoped = Boolean(scopedDocIds && scopedDocIds.length > 0);
+
+    // Query structured medical records with scope applied
+    const [medRows, allergyRows, [user]] = await Promise.all([
+      getDb()
+        .select({
+          name: medications.name,
+          genericName: medications.genericName,
+          dosage: medications.dosage,
+          frequency: medications.frequency,
+          route: medications.route,
+          prescribedDate: medications.prescribedDate,
+          patientStatus: medications.patientStatus,
+          observation: medications.observation,
+          documentId: medications.documentId,
+          documentTitle: documents.title,
+        })
+        .from(medications)
+        .leftJoin(documents, eq(documents.id, medications.documentId))
+        .where(
+          and(
+            eq(medications.userId, userId),
+            eq(medications.sourceActive, true),
+            isScoped ? inArray(medications.documentId, scopedDocIds!) : undefined
+          )
+        )
+        .limit(PROFILE_LIMIT),
       getDb()
         .select()
-        .from(medications)
-        .where(and(eq(medications.userId, userId), eq(medications.isActive, true)))
+        .from(allergies)
+        .where(
+          and(
+            eq(allergies.userId, userId),
+            isScoped ? or(inArray(allergies.documentId, scopedDocIds!), isNull(allergies.documentId)) : undefined
+          )
+        )
         .limit(PROFILE_LIMIT),
-      getDb().select().from(allergies).where(eq(allergies.userId, userId)).limit(PROFILE_LIMIT),
       getDb().select().from(users).where(eq(users.id, userId)).limit(1),
     ]);
 
     const userProfile = {
-      medications: meds.map((m) => ({
-        name: m.name,
-        genericName: m.genericName ?? undefined,
-        dosage: m.dosage ?? undefined,
-        frequency: m.frequency ?? undefined,
-        route: m.route ?? undefined,
-      })),
+      medications: medRows.map((m) => {
+        let status = 'prescribed_unconfirmed';
+        if (m.patientStatus) {
+          status = m.patientStatus;
+        } else if ((m.observation as Record<string, unknown> | null)?.explicitStop) {
+          status = 'discontinued';
+        } else if (m.prescribedDate && Date.now() - new Date(m.prescribedDate).getTime() > 180 * 86400 * 1000) {
+          status = 'historical';
+        }
+
+        return {
+          name: m.name,
+          genericName: m.genericName ?? undefined,
+          dosage: m.dosage ?? undefined,
+          frequency: m.frequency ?? undefined,
+          route: m.route ?? undefined,
+          status,
+          prescribedDate: m.prescribedDate?.toISOString().split('T')[0],
+          sourceDocumentTitle: m.documentTitle ?? undefined,
+        };
+      }),
       allergies: allergyRows.map((a) => ({
         allergen: a.allergen,
         allergyType: a.allergyType ?? undefined,
@@ -218,6 +334,33 @@ export async function POST(request: NextRequest) {
       conditions: (user?.knownConditions as string[]) ?? [],
     };
 
+    // 3. Explicit insufficient evidence handling for scoped search when no chunks and no relevant profile records exist
+    if (isScoped && chunks.length === 0 && userProfile.medications.length === 0 && userProfile.allergies.length === 0) {
+      const docNames = resolvedScope.documentTitles?.join(', ') || 'the selected document';
+      const insufficientMsg = `I couldn't find any information answering your question in ${docNames}. No matching clinical notes, medications, or lab findings were documented in this source.\n\nYou can switch your search scope to "Complete Medical History" or select another document to search your wider health records.`;
+
+      await persistTurn(userId, conversationId, 'assistant', insufficientMsg, []);
+
+      const readable = new ReadableStream({
+        start(controller) {
+          controller.enqueue(sse({
+            conversationId,
+            sources: [],
+            scope: {
+              mode: resolvedScope.mode,
+              documentIds: resolvedScope.documentIds,
+              label: resolvedScope.label,
+            },
+          }));
+          controller.enqueue(sse({ content: insufficientMsg }));
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      return new Response(readable, { headers: SSE_HEADERS });
+    }
+
     const sources: Source[] = chunks.map((c) => ({
       documentId: c.documentId,
       documentTitle: c.documentTitle,
@@ -226,17 +369,27 @@ export async function POST(request: NextRequest) {
       relevanceScore: c.relevanceScore,
     }));
 
-    const promptMessages = buildQaPrompt(message, chunks, userProfile, priorTurns);
+    const promptMessages = buildQaPrompt(message, chunks, userProfile, priorTurns, {
+      mode: resolvedScope.mode,
+      documentTitles: resolvedScope.documentTitles,
+      label: resolvedScope.label,
+    });
+
     const stream = await streamAnswer(promptMessages);
 
     let fullResponse = '';
 
     const readable = new ReadableStream({
       async start(controller) {
-        // Metadata goes out before the model produces anything, so the client always
-        // learns the conversation id even when the answer is empty. It used to ride
-        // on the first non-empty content delta.
-        controller.enqueue(sse({ conversationId, sources }));
+        controller.enqueue(sse({
+          conversationId,
+          sources,
+          scope: {
+            mode: resolvedScope.mode,
+            documentIds: resolvedScope.documentIds,
+            label: resolvedScope.label,
+          },
+        }));
 
         try {
           for await (const chunk of stream) {
@@ -254,7 +407,6 @@ export async function POST(request: NextRequest) {
           controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
         } catch (error) {
           console.error('[Chat] stream error:', error);
-          // Keep whatever was generated before the failure rather than losing it.
           if (fullResponse) {
             await persistTurn(userId, conversationId, 'assistant', fullResponse, sources);
           }

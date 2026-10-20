@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import useSWR from "swr";
 import {
   Send,
   Mic,
@@ -12,22 +13,41 @@ import {
   AlertCircle,
   Plus,
   History,
+  Sparkles,
+  Layers,
+  Check,
+  X,
+  FileSearch,
+  BookOpen,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { useChat } from "@/hooks/use-chat";
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
-import type { SourceReference } from "@/types/chat";
+import type { SourceReference, SourceSelectionMode, ClarificationOption } from "@/types/chat";
+
+interface DocumentItem {
+  id: string;
+  title: string;
+  documentType: string;
+  createdAt: string;
+  documentDate: string | null;
+  extractionStatus: string;
+}
+
+const fetcher = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : { documents: [] }));
 
 export default function ChatPage() {
   const {
@@ -38,12 +58,22 @@ export default function ChatPage() {
     conversations,
     loadConversation,
     startNewConversation,
+    activeScope,
+    setActiveScope,
+    resetScope,
   } = useChat();
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Document picker modal state
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [pendingClarificationQuestion, setPendingClarificationQuestion] = useState<string | null>(null);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [docSearch, setDocSearch] = useState("");
+
+  // Voice recording state
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
   const {
     isRecording,
@@ -54,6 +84,14 @@ export default function ChatPage() {
     duration,
   } = useVoiceRecorder();
   const [transcribing, setTranscribing] = useState(false);
+
+  // Fetch user documents for picker
+  const { data: docData } = useSWR<{ documents: DocumentItem[] }>(
+    "/api/documents?limit=100",
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+  const userDocuments = docData?.documents || [];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -73,6 +111,67 @@ export default function ChatPage() {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleClarificationClick = (option: ClarificationOption, originalQuestion: string) => {
+    if (option.mode === "specific") {
+      setPendingClarificationQuestion(originalQuestion);
+      setSelectedDocIds(activeScope.documentIds || []);
+      setDocPickerOpen(true);
+      return;
+    }
+
+    sendMessage(originalQuestion, { mode: option.mode }, option.label);
+  };
+
+  const handleModeChange = (mode: SourceSelectionMode) => {
+    if (mode === "auto") {
+      resetScope();
+    } else if (mode === "latest") {
+      setActiveScope({ mode: "latest", label: "Latest Document" });
+    } else if (mode === "all") {
+      setActiveScope({ mode: "all", label: "Complete Medical History" });
+    } else if (mode === "specific") {
+      setPendingClarificationQuestion(null);
+      setSelectedDocIds(activeScope.documentIds || []);
+      setDocPickerOpen(true);
+    }
+  };
+
+  const applyDocumentSelection = () => {
+    if (selectedDocIds.length === 0) {
+      setDocPickerOpen(false);
+      return;
+    }
+
+    const selectedDocs = userDocuments.filter((d) => selectedDocIds.includes(d.id));
+    const label =
+      selectedDocs.length === 1
+        ? selectedDocs[0].title
+        : `${selectedDocs.length} Documents Selected`;
+
+    if (pendingClarificationQuestion) {
+      sendMessage(
+        pendingClarificationQuestion,
+        { mode: "specific", documentIds: selectedDocIds },
+        `Selected: ${label}`
+      );
+      setPendingClarificationQuestion(null);
+    } else {
+      setActiveScope({
+        mode: "specific",
+        documentIds: selectedDocIds,
+        label,
+      });
+    }
+
+    setDocPickerOpen(false);
+  };
+
+  const toggleDocSelection = (id: string) => {
+    setSelectedDocIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
   };
 
   const handleVoiceTranscribe = async () => {
@@ -115,6 +214,12 @@ export default function ChatPage() {
     if (diffDays < 7) return `${diffDays}d ago`;
     return d.toLocaleDateString();
   };
+
+  const filteredDocs = userDocuments.filter((d) => {
+    if (!docSearch.trim()) return true;
+    const q = docSearch.toLowerCase();
+    return d.title.toLowerCase().includes(q) || d.documentType.toLowerCase().includes(q);
+  });
 
   return (
     <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-6xl gap-4">
@@ -171,48 +276,103 @@ export default function ChatPage() {
       {/* Main chat area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4">
+        <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
               className="size-8 md:hidden"
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Toggle conversation history"
             >
               <History className="size-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Ask Tabeeb</h1>
-              <p className="text-sm text-muted-foreground">
-                Ask questions about your medical history and documents.
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Ask Tabeeb</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Grounded answers from your medical records and prescriptions.
               </p>
             </div>
           </div>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1.5 self-end sm:self-auto">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="hidden md:flex"
+              className="hidden md:flex text-xs"
             >
-              <History className="me-2 size-3.5" />
+              <History className="me-1.5 size-3.5" />
               History
             </Button>
-            <Button variant="ghost" size="sm" onClick={startNewConversation}>
-              <Plus className="me-2 size-3.5" aria-hidden="true" />
+            <Button variant="ghost" size="sm" onClick={startNewConversation} className="text-xs">
+              <Plus className="me-1.5 size-3.5" aria-hidden="true" />
               New Chat
             </Button>
           </div>
         </div>
 
-        {/* Messages */}
+        {/* Source Scope Toolbar */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-2 text-xs">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="me-1 text-xs font-medium text-muted-foreground">Source:</span>
+            <Button
+              variant={activeScope.mode === "auto" ? "default" : "outline"}
+              size="sm"
+              className="h-7 gap-1 px-2.5 text-xs"
+              onClick={() => handleModeChange("auto")}
+            >
+              <Sparkles className="size-3" />
+              Auto
+            </Button>
+            <Button
+              variant={activeScope.mode === "latest" ? "default" : "outline"}
+              size="sm"
+              className="h-7 gap-1 px-2.5 text-xs"
+              onClick={() => handleModeChange("latest")}
+            >
+              <FileSearch className="size-3" />
+              Latest Doc
+            </Button>
+            <Button
+              variant={activeScope.mode === "all" ? "default" : "outline"}
+              size="sm"
+              className="h-7 gap-1 px-2.5 text-xs"
+              onClick={() => handleModeChange("all")}
+            >
+              <BookOpen className="size-3" />
+              All History
+            </Button>
+            <Button
+              variant={activeScope.mode === "specific" ? "default" : "outline"}
+              size="sm"
+              className="h-7 gap-1 px-2.5 text-xs"
+              onClick={() => handleModeChange("specific")}
+            >
+              <Layers className="size-3" />
+              Choose Docs
+            </Button>
+          </div>
+
+          {/* Active Scope Indicator Badge */}
+          {activeScope.mode !== "auto" && (
+            <div className="flex items-center gap-1">
+              <Badge variant="secondary" className="gap-1 text-[11px] font-normal">
+                <span className="font-semibold">Scoped:</span> {activeScope.label || activeScope.mode}
+                <button
+                  type="button"
+                  onClick={resetScope}
+                  className="ms-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                  aria-label="Reset scope to Auto"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            </div>
+          )}
+        </div>
+
+        {/* Messages Container */}
         <ScrollArea className="flex-1 rounded-xl border bg-background">
-          {/*
-            The assistant's answer streams in token by token. `aria-live="polite"`
-            announces it as it arrives; without it a screen-reader user hears nothing
-            at all and has no way to know the reply has finished. `aria-atomic="false"`
-            keeps it reading only the new text rather than the whole thread each time.
-          */}
           <div
             className="space-y-4 p-4"
             role="log"
@@ -222,22 +382,22 @@ export default function ChatPage() {
             aria-label="Conversation"
           >
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center py-20 text-center">
-                <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <MessageSquare className="size-8" aria-hidden="true" />
+              <div className="flex flex-col items-center py-16 text-center">
+                <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <MessageSquare className="size-7" aria-hidden="true" />
                 </div>
                 <h2 className="text-lg font-semibold">
-                  Ask me anything about your medical history
+                  Ask me anything about your health records
                 </h2>
                 <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                  I can help you understand your lab results, check medication
-                  interactions, summarize your health records, and more.
+                  Choose to ask about your latest document, compare recent visits, or search your complete medical history.
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
                   {[
-                    "What medications am I taking?",
-                    "Summarize my last lab report",
-                    "Any drug interactions?",
+                    "What medications am I taking right now?",
+                    "What medicines are listed in my latest prescription?",
+                    "Compare my last two blood tests",
+                    "Have I ever been prescribed amoxicillin?",
                   ].map((q) => (
                     <Button
                       key={q}
@@ -261,7 +421,7 @@ export default function ChatPage() {
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 sm:max-w-[80%] ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted"
@@ -271,25 +431,54 @@ export default function ChatPage() {
                       {msg.content}
                     </p>
 
+                    {/* Clarification prompt & clickable option buttons */}
+                    {msg.role === "assistant" && msg.clarification && (
+                      <div className="mt-3 space-y-2 rounded-xl border border-primary/20 bg-background/90 p-3 shadow-sm">
+                        <p className="text-xs font-semibold text-foreground">
+                          Please choose how you would like me to answer:
+                        </p>
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
+                          {msg.clarification.options.map((option, idx) => (
+                            <Button
+                              key={idx}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 justify-start gap-1.5 text-xs hover:border-primary hover:bg-primary/5 sm:justify-center"
+                              onClick={() =>
+                                handleClarificationClick(option, msg.clarification!.originalQuestion)
+                              }
+                            >
+                              {option.mode === "latest" && <FileSearch className="size-3.5 text-primary" />}
+                              {option.mode === "all" && <BookOpen className="size-3.5 text-primary" />}
+                              {option.mode === "specific" && <Layers className="size-3.5 text-primary" />}
+                              <span>{option.label}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Citations */}
                     {msg.role === "assistant" &&
                       msg.sources &&
                       msg.sources.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
+                        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/50 pt-2.5">
                           <span className="me-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                             Sources:
                           </span>
-                          {msg.sources.map(
-                            (source: SourceReference, si: number) => (
-                              <Link
-                                key={si}
-                                href={`/documents/${source.documentId}`}
-                                className="inline-flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium transition-colors hover:bg-background"
-                              >
-                                <FileText className="size-2.5" aria-hidden="true" />
-                                {source.documentTitle}
-                              </Link>
-                            )
-                          )}
+                          {msg.sources.map((source: SourceReference, si: number) => (
+                            <Link
+                              key={si}
+                              href={`/documents/${source.documentId}`}
+                              className="inline-flex items-center gap-1 rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-medium transition-colors hover:bg-background"
+                            >
+                              <FileText className="size-2.5" aria-hidden="true" />
+                              <span className="max-w-[180px] truncate">{source.documentTitle}</span>
+                              {source.section && (
+                                <span className="text-muted-foreground">({source.section})</span>
+                              )}
+                            </Link>
+                          ))}
                         </div>
                       )}
                   </div>
@@ -304,7 +493,7 @@ export default function ChatPage() {
                   <div className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3">
                     <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
                     <span className="text-sm text-muted-foreground">
-                      Thinking...
+                      Searching records & analyzing...
                     </span>
                   </div>
                 </div>
@@ -334,8 +523,6 @@ export default function ChatPage() {
               aria-label="Ask about your health records"
             />
           </div>
-          {/* Icon-only controls carry their name on the button, and the icon itself is
-              hidden — otherwise a screen reader announces the SVG and nothing useful. */}
           <Button
             variant="outline"
             size="icon"
@@ -360,6 +547,94 @@ export default function ChatPage() {
           </Button>
         </div>
       </div>
+
+      {/* Choose Documents Dialog */}
+      <Dialog open={docPickerOpen} onOpenChange={setDocPickerOpen}>
+        <DialogContent className="max-w-md sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select Source Documents</DialogTitle>
+            <DialogDescription>
+              Choose one or more documents to scope Tabeeb&apos;s answer.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <Input
+              placeholder="Filter documents by title or type..."
+              value={docSearch}
+              onChange={(e) => setDocSearch(e.target.value)}
+              className="h-8 text-xs"
+            />
+
+            <ScrollArea className="h-64 rounded-md border p-2">
+              {filteredDocs.length === 0 ? (
+                <p className="p-4 text-center text-xs text-muted-foreground">
+                  No documents found.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {filteredDocs.map((doc) => {
+                    const isSelected = selectedDocIds.includes(doc.id);
+                    return (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => toggleDocSelection(doc.id)}
+                        className={`flex w-full items-start justify-between rounded-lg border p-2.5 text-start text-xs transition-colors ${
+                          isSelected
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "hover:bg-muted"
+                        }`}
+                      >
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-foreground">{doc.title}</p>
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <Badge variant="outline" className="text-[10px]">
+                              {doc.documentType}
+                            </Badge>
+                            <span>Uploaded {new Date(doc.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <div
+                          className={`mt-0.5 flex size-4 items-center justify-center rounded border ${
+                            isSelected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-muted-foreground/40"
+                          }`}
+                        >
+                          {isSelected && <Check className="size-3" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          <DialogFooter className="flex items-center justify-between sm:justify-between">
+            <span className="text-xs text-muted-foreground">
+              {selectedDocIds.length} selected
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDocPickerOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={applyDocumentSelection}
+                disabled={selectedDocIds.length === 0}
+              >
+                {pendingClarificationQuestion ? "Continue Question" : "Apply Scope"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Voice Dialog */}
       <Dialog open={voiceDialogOpen} onOpenChange={setVoiceDialogOpen}>

@@ -42,11 +42,18 @@ export interface RetrievedChunk {
   matchedTerms: string[];
 }
 
-interface RetrieverOptions {
+export interface RetrieverOptions {
   sectionFilter?: string;
   limit?: number;
   /** Set false to return whatever ranks highest regardless of the floor. */
   applyRelevanceFloor?: boolean;
+  /** Filter chunks to specific authorized document IDs. */
+  documentIds?: string[];
+}
+
+function documentIdCondition(documentIds?: string[]) {
+  if (!documentIds || documentIds.length === 0) return sql``;
+  return sql`AND dc.document_id IN (${sql.join(documentIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
 }
 
 /** Candidates pulled from each arm before fusion. */
@@ -124,7 +131,7 @@ function hasLexicalContent(query: string): boolean {
   return /[\p{L}\p{N}]{2,}/u.test(query);
 }
 
-async function denseCandidates(userId: string, query: string): Promise<CandidateRow[]> {
+async function denseCandidates(userId: string, query: string, documentIds?: string[]): Promise<CandidateRow[]> {
   // e5 is asymmetric: stored text is embedded as 'passage', the query as 'query'.
   const embedding = await embeddingProvider.embed(query, 'query');
   const literal = `[${embedding.join(',')}]`;
@@ -139,12 +146,13 @@ async function denseCandidates(userId: string, query: string): Promise<Candidate
     FROM document_chunks dc
     WHERE dc.user_id = ${userId}
       AND dc.embedding IS NOT NULL
+      ${documentIdCondition(documentIds)}
     ORDER BY dc.embedding <=> ${literal}::vector ASC
     LIMIT ${CANDIDATE_LIMIT}
   `)) as unknown as CandidateRow[];
 }
 
-async function lexicalCandidates(userId: string, query: string): Promise<CandidateRow[]> {
+async function lexicalCandidates(userId: string, query: string, documentIds?: string[]): Promise<CandidateRow[]> {
   if (!hasLexicalContent(query)) return [];
 
   // 'english' matches the index rebuilt in migration 0001. Stemming is applied to
@@ -171,6 +179,7 @@ async function lexicalCandidates(userId: string, query: string): Promise<Candida
     WHERE dc.user_id = ${userId}
       AND q.tsq IS NOT NULL
       AND to_tsvector('english', dc.content) @@ q.tsq
+      ${documentIdCondition(documentIds)}
     ORDER BY score DESC
     LIMIT ${CANDIDATE_LIMIT}
   `)) as unknown as CandidateRow[];
@@ -237,8 +246,8 @@ export async function retrieveRelevantChunks(
   const expanded = expandQuery(trimmed);
 
   const [denseResult, lexicalResult] = await Promise.allSettled([
-    denseCandidates(userId, trimmed),
-    lexicalCandidates(userId, expanded.lexicalQuery),
+    denseCandidates(userId, trimmed, options?.documentIds),
+    lexicalCandidates(userId, expanded.lexicalQuery, options?.documentIds),
   ]);
 
   if (denseResult.status === 'rejected' && lexicalResult.status === 'rejected') {

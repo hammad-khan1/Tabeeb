@@ -72,6 +72,11 @@ export const searchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(6),
 });
 
+export const chatScopeSchema = z.object({
+  mode: z.enum(['auto', 'latest', 'all', 'specific']).default('auto'),
+  documentIds: z.array(z.uuid()).max(20).optional(),
+}).optional();
+
 export const chatSchema = z.object({
   message: z.string().trim().min(1, 'Message is required').max(4000),
   // `.nullish()`, not `.optional()`: the client holds conversationId in state that
@@ -79,6 +84,7 @@ export const chatSchema = z.object({
   // null. `.optional()` accepts undefined but rejects null, which 400'd every new
   // chat.
   conversationId: z.uuid().nullish().transform((v) => v ?? undefined),
+  scope: chatScopeSchema,
 });
 
 export const chatHistorySchema = z.object({
