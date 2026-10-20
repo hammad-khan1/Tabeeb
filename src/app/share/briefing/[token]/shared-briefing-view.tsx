@@ -23,6 +23,9 @@ import { Button } from "@/components/ui/button";
 import type { SharedBriefingData } from "@/services/briefing/share";
 import { SourceDocumentViewer } from "@/components/briefing/source-document-viewer";
 import { BriefingPrintButton } from "./print-button";
+import { BriefingMedicationSafety, MedicationUseStatus, PatientReportedValues } from "@/components/medications/briefing-safety";
+import { sourceDocumentUrl } from "@/components/medications/shared";
+import { useLocale } from "@/components/providers/locale-provider";
 
 function formatDate(value: Date | string | null | undefined): string {
   if (!value) return "—";
@@ -37,6 +40,8 @@ interface SharedBriefingViewProps {
 
 export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
   const { briefing } = data;
+  const { t } = useLocale();
+  const canViewOriginals = data.originalDocumentsAvailable !== false;
 
   const [viewerState, setViewerState] = useState<{
     isOpen: boolean;
@@ -140,6 +145,8 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
           </div>
         </header>
 
+        {!canViewOriginals && <p role="note" className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">{t('medications.sharedSourcesWithheld')}</p>}
+
         {/* Clinical Summary Banner */}
         <Card className="border-primary/20 bg-primary/5">
           <CardContent className="p-5">
@@ -178,7 +185,7 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                   <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
                     Suggested Action: {conflict.recommendation}
                   </p>
-                  {conflict.sourceDocumentIds && conflict.sourceDocumentIds.length > 0 && (
+                  {canViewOriginals && conflict.sourceDocumentIds && conflict.sourceDocumentIds.length > 0 && (
                     <div className="pt-2 flex items-center gap-2 flex-wrap">
                       {conflict.sourceDocumentIds.map((docId, idx) => (
                         <Button
@@ -242,7 +249,7 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                     {doc.contactInfo && (
                       <p className="text-xs text-muted-foreground">Contact: {doc.contactInfo}</p>
                     )}
-                    {doc.sourceDocumentId && (
+                    {canViewOriginals && doc.sourceDocumentId && (
                       <div className="pt-1 print:hidden">
                         <Button
                           variant="ghost"
@@ -278,10 +285,10 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Pill className="size-4.5 text-primary" />
-                Current Medications & Prescribing Attribution ({briefing.currentMedications.length})
+                Current / Unconfirmed Medications & Prescribing Attribution ({briefing.currentMedications.length})
               </CardTitle>
               <CardDescription className="text-xs">
-                Active prescriptions attributed to treating physicians with source citations.
+                Documented prescriptions with separately labelled patient-confirmed use and original source citations.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -300,12 +307,14 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                       <tr key={med.id} className="hover:bg-muted/40 transition">
                         <td className="py-2.5 pe-4 font-medium text-foreground">
                           {med.name}
+                          <div><MedicationUseStatus status={med.useStatus} /></div>
                           {med.genericName && (
                             <span className="block text-xs text-muted-foreground font-normal">({med.genericName})</span>
                           )}
                         </td>
                         <td className="py-2.5 pe-4 text-xs text-muted-foreground">
-                          {[med.dosage, med.frequency, med.route].filter(Boolean).join(" · ") || "As directed"}
+                          {[med.dosage, med.frequency, med.route].filter(Boolean).join(" · ") || "Instructions unrecorded"}
+                          <PatientReportedValues corrections={med.patientCorrections} />
                         </td>
                         <td className="py-2.5 pe-4 text-xs">
                           <span className={med.prescribingDoctor.isIdentified ? "font-semibold text-foreground" : "italic text-muted-foreground"}>
@@ -323,7 +332,7 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                                 <span className="ms-1 font-mono text-[11px] text-primary">(p. {med.pageNumber})</span>
                               )}
                             </span>
-                            {med.sourceDocumentId && (
+                            {canViewOriginals && med.sourceDocumentId && (
                               <Button
                                 variant="outline"
                                 size="xs"
@@ -354,6 +363,57 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                   </tbody>
                 </table>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {briefing.historicalMedications.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Historical, Discontinued &amp; Changed Medications ({briefing.historicalMedications.length})</CardTitle>
+              <CardDescription>These documented states are kept separate from current or unconfirmed use.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {briefing.historicalMedications.map((med) => (
+                <article key={med.id} className="space-y-2 rounded-lg border p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{med.name}</span>
+                    <MedicationUseStatus status={med.useStatus ?? (med.status === "discontinued" ? "discontinued" : "historical")} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{[med.dosage, med.frequency, med.route].filter(Boolean).join(" · ") || "Instructions unrecorded"}</p>
+                  <p className="text-xs text-muted-foreground">{med.sourceCitation}</p>
+                  <PatientReportedValues corrections={med.patientCorrections} />
+                  {canViewOriginals && med.sourceDocumentId && (
+                    <Button variant="outline" size="xs" onClick={() => openSourceViewer({
+                      documentId: med.sourceDocumentId,
+                      documentTitle: med.sourceDocumentTitle,
+                      documentDate: med.sourceDocumentDate,
+                      pageNumber: med.pageNumber,
+                      mimeType: med.mimeType,
+                      highlightTerm: med.name,
+                    })} className="print:hidden">
+                      <Eye aria-hidden className="size-3" /> Verify in Original Document
+                    </Button>
+                  )}
+                </article>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {briefing.medicationSafety && (
+          <Card>
+            <CardContent>
+              <BriefingMedicationSafety
+                evaluation={briefing.medicationSafety}
+                sourceHref={(documentId, page) => {
+                  if (!canViewOriginals) return null;
+                  const authenticatedUrl = sourceDocumentUrl(documentId, page);
+                  return authenticatedUrl
+                    ? authenticatedUrl.replace("/api/documents/", `/api/briefing/share/${encodeURIComponent(token)}/documents/`)
+                    : null;
+                }}
+              />
             </CardContent>
           </Card>
         )}
@@ -416,7 +476,7 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                         <td className="py-2.5 text-xs text-muted-foreground">
                           <div className="flex flex-col gap-1 items-start">
                             <span>{trend.clinicalNote}</span>
-                            {trend.sourceDocumentId && (
+                            {canViewOriginals && trend.sourceDocumentId && (
                               <Button
                                 variant="outline"
                                 size="xs"
@@ -473,7 +533,7 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                     <div className="flex items-center gap-2 text-xs">
                       {c.severity && <Badge variant="secondary">{c.severity}</Badge>}
                       <span className="text-muted-foreground">{formatDate(c.diagnosedDate)}</span>
-                      {c.sourceDocumentId && (
+                      {canViewOriginals && c.sourceDocumentId && (
                         <Button
                           variant="ghost"
                           size="xs"
@@ -580,6 +640,7 @@ export function SharedBriefingView({ data, token }: SharedBriefingViewProps) {
                       <Button
                         variant="outline"
                         size="xs"
+                        disabled={!canViewOriginals}
                         onClick={() => openSourceViewer({
                           documentId: c.documentId,
                           documentTitle: c.documentTitle,

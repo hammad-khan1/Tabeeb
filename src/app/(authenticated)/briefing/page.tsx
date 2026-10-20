@@ -55,6 +55,7 @@ import type {
   DoctorProfile,
 } from "@/services/briefing/types";
 import { SourceDocumentViewer } from "@/components/briefing/source-document-viewer";
+import { BriefingMedicationSafety, MedicationUseStatus, PatientReportedValues } from "@/components/medications/briefing-safety";
 
 const fetcher = (url: string) => fetch(url).then((res) => {
   if (!res.ok) throw new Error("Failed to load briefing data");
@@ -729,16 +730,16 @@ export default function BriefingPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Pill className="size-4.5 text-primary" />
-                Current Medications & Prescribing Attribution ({briefing.currentMedications.length})
+                Current / Unconfirmed Medications & Prescribing Attribution ({briefing.currentMedications.length})
               </CardTitle>
               <CardDescription className="text-xs">
-                Active prescriptions with doctor, strength, instructions, and source evidence.
+                Documented prescriptions with separately labelled patient-confirmed use, instructions and source evidence.
               </CardDescription>
             </CardHeader>
             <CardContent>
               {briefing.currentMedications.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-6">
-                  No active medications found in selected records.
+                  No current or unconfirmed medication records found in this selection.
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -757,6 +758,7 @@ export default function BriefingPage() {
                         <tr key={med.id} className="hover:bg-muted/40 transition">
                           <td className="py-2.5 pe-4 font-medium text-foreground">
                             {med.name}
+                            <div><MedicationUseStatus status={med.useStatus} /></div>
                             {med.genericName && (
                               <span className="block text-xs text-muted-foreground font-normal">
                                 Active Ingredient: {med.genericName}
@@ -765,6 +767,7 @@ export default function BriefingPage() {
                           </td>
                           <td className="py-2.5 pe-4 text-xs text-muted-foreground">
                             {[med.dosage, med.frequency, med.route].filter(Boolean).join(" · ") || "Instructions unrecorded"}
+                            <PatientReportedValues corrections={med.patientCorrections} />
                           </td>
                           <td className="py-2.5 pe-4 text-xs">
                             <span className={med.prescribingDoctor.isIdentified ? "font-semibold text-foreground" : "italic text-muted-foreground"}>
@@ -822,6 +825,10 @@ export default function BriefingPage() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardContent><BriefingMedicationSafety evaluation={briefing.medicationSafety} /></CardContent>
+          </Card>
+
           {/* 4. Historical & Discontinued Medications */}
           {briefing.historicalMedications.length > 0 && (
             <Card>
@@ -831,7 +838,7 @@ export default function BriefingPage() {
                   Historical & Discontinued Medications ({briefing.historicalMedications.length})
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Prior prescriptions distinguished from current active therapy.
+                  Documented historical, discontinued and changed prescriptions. Absence from a later record does not establish discontinuation.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -848,11 +855,9 @@ export default function BriefingPage() {
                     <tbody className="divide-y divide-border">
                       {briefing.historicalMedications.map((med) => (
                         <tr key={med.id} className="text-muted-foreground hover:bg-muted/40 transition">
-                          <td className="py-2.5 pe-4 font-medium text-foreground">{med.name}</td>
+                          <td className="py-2.5 pe-4 font-medium text-foreground">{med.name}<PatientReportedValues corrections={med.patientCorrections} /></td>
                           <td className="py-2.5 pe-4 text-xs">
-                            <Badge variant={med.status === "discontinued" ? "destructive" : "secondary"} className="text-[10px]">
-                              {med.status.toUpperCase()}
-                            </Badge>
+                            <MedicationUseStatus status={med.useStatus ?? (med.status === "discontinued" ? "discontinued" : "historical")} />
                           </td>
                           <td className="py-2.5 pe-4 text-xs">{med.prescribingDoctor.name}</td>
                           <td className="py-2.5 text-xs">{med.sourceCitation}</td>
@@ -1273,11 +1278,11 @@ export default function BriefingPage() {
                         <div className="flex flex-wrap items-center justify-between gap-1">
                           <span className="font-semibold text-foreground">{event.title}</span>
                           <span className="text-xs text-muted-foreground">
-                            {new Date(event.date).toLocaleDateString("en-US", {
+                            {event.date ? new Date(event.date).toLocaleDateString("en-US", {
                               month: "short",
                               day: "numeric",
                               year: "numeric",
-                            })}
+                            }) : "Date unknown"}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>

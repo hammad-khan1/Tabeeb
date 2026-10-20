@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
 import { consume } from '@/lib/rate-limit';
-import { errorResponse } from '@/lib/api-error';
+import { badRequest, errorResponse } from '@/lib/api-error';
+import { parseOrThrow } from '@/lib/validation';
+import { briefingFilterSchema } from '@/services/briefing/filter-schema';
 import { generatePatientBriefing } from '@/services/briefing/briefing-generator';
 import { generateBriefingPdf } from '@/services/briefing/pdf-generator';
 
@@ -10,18 +12,15 @@ export async function POST(request: NextRequest) {
     const userId = await getCurrentUserId();
     consume('read', userId);
 
-    let body: { from?: string | null; to?: string | null; documentIds?: string[] } = {};
+    let body: unknown = {};
     try {
-      body = await request.json();
+      const text = await request.text();
+      body = text.trim() ? JSON.parse(text) : {};
     } catch {
-      // Empty body is fine, falls back to full record
+      throw badRequest('Invalid JSON request body.');
     }
 
-    const briefing = await generatePatientBriefing(userId, {
-      from: body.from ?? undefined,
-      to: body.to ?? undefined,
-      documentIds: body.documentIds,
-    });
+    const briefing = await generatePatientBriefing(userId, parseOrThrow(briefingFilterSchema, body));
 
     const pdfBuffer = generateBriefingPdf(briefing);
 
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="tabeeb-patient-briefing.pdf"',
-        'Cache-Control': 'no-store, max-age=0',
+        'Cache-Control': 'private, no-store, max-age=0',
       },
     });
   } catch (error) {

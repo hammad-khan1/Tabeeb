@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, type Database } from '@/lib/db';
 import { badRequest, notFound } from '@/lib/api-error';
 import {
@@ -17,6 +17,21 @@ type Reader = Database | Transaction;
 const SNAPSHOT_LIMIT = 2000;
 const REVIEW_STATUSES: FindingReviewStatus[] = ['open', 'needs_verification', 'reviewed', 'resolved', 'dismissed'];
 const CORRECTION_FIELDS = ['name', 'dosage', 'frequency', 'duration', 'route', 'strength', 'doseAmount', 'instructions'] as const;
+
+/** PostgreSQL jsonb reorders object keys; key order must never revoke a review. */
+function stableJson(value: unknown): string {
+  const canonical = (item: unknown): unknown => {
+    if (item instanceof Date) return item.toISOString();
+    if (Array.isArray(item)) return item.map(canonical);
+    if (item && typeof item === 'object') {
+      return Object.fromEntries(Object.entries(item).filter(([, entry]) => entry !== undefined)
+        .sort(([first], [second]) => first.localeCompare(second))
+        .map(([key, entry]) => [key, canonical(entry)]));
+    }
+    return item;
+  };
+  return JSON.stringify(canonical(value));
+}
 
 export interface MedicationDocument {
   id: string;
@@ -60,8 +75,9 @@ export function medicationRecordFromRow(
     id: row.id, userId: row.userId, documentId: row.documentId,
     documentTitle: document.title, documentType: document.documentType,
     documentDate: document.documentDate,
-    createdAt: row.createdAt?.toISOString() ?? '',
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: row.createdAt ? (row.createdAt instanceof Date ? row.createdAt.toISOString() : new Date(row.createdAt).toISOString()) : '',
+    updatedAt: row.updatedAt ? (row.updatedAt instanceof Date ? row.updatedAt.toISOString() : new Date(row.updatedAt).toISOString()) : new Date().toISOString(),
+    patientUpdatedAt: row.confirmedAt ? (row.confirmedAt instanceof Date ? row.confirmedAt.toISOString() : new Date(row.confirmedAt).toISOString()) : null,
     name: row.name, genericName: row.genericName,
     dosage: row.dosage, frequency: row.frequency, duration: row.duration, route: row.route,
     // Legacy model-generated RxCUIs are never treated as verified.
@@ -138,18 +154,23 @@ async function snapshot(db: Reader, userId: string): Promise<OwnedMedicationSnap
     id: `profile:${index}`, userId, documentId: null, documentTitle: null,
     allergen, reaction: null, severity: null, assertionStatus: 'present',
   }));
-  const completeAllergies = [...allergyList, ...profileAllergies];
-  const findings = findingRows.slice(0, SNAPSHOT_LIMIT).map(asFinding).map((finding) => ({
+  const allergiesTruncated = allergyList.length + profileAllergies.length > SNAPSHOT_LIMIT;
+  const completeAllergies = [...profileAllergies, ...allergyList].slice(0, SNAPSHOT_LIMIT);
+  const truncated = allergiesTruncated || [medicationRows, documentRows, allergyRows, findingRows, auditRows].some((rows) => rows.length > SNAPSHOT_LIMIT);
+  const sourceTruncated = allergiesTruncated || [medicationRows, documentRows, allergyRows].some((rows) => rows.length > SNAPSHOT_LIMIT);
+  // Excludes findings/reviews/audit: persisting an evaluation cannot change its own revision.
+  const revision = createHash('sha256').update(stableJson({
+    medications: records, allergies: completeAllergies, documents: documentList, truncated: sourceTruncated,
+  })).digest('hex');
+  const findings = findingRows.slice(0, SNAPSHOT_LIMIT).map((row) => {
+    const finding = asFinding(row);
+    return ({
     ...finding,
-    current: finding.current &&
+    current: finding.current && row.evaluatedRevision === revision &&
       finding.medicationIds.every((id) => activeMedicationIds.has(id)) &&
       finding.evidence.every((evidence) => !evidence.documentId || ownedDocumentIds.has(evidence.documentId)),
-  }));
-  const truncated = [medicationRows, documentRows, allergyRows, findingRows, auditRows].some((rows) => rows.length > SNAPSHOT_LIMIT);
-  // Excludes review metadata: a simultaneous review is preserved under the write lock.
-  const revision = createHash('sha256').update(JSON.stringify({
-    medications: records, allergies: completeAllergies, documents: documentList, truncated,
-  })).digest('hex');
+    });
+  });
   return {
     medications: records, allergies: completeAllergies, findings, documents: documentList,
     audit: auditRows.slice(0, SNAPSHOT_LIMIT).map((row) => ({
@@ -189,26 +210,50 @@ export async function invalidateMedicationFindings(tx: Transaction, userId: stri
 
 /** Original rows are updated only by source processing; patient fields survive. */
 export async function synchronizeMedicationObservations(
-  tx: Transaction, userId: string, documentId: string, rows: PreparedMedicationRow[]
+  tx: Transaction, userId: string, documentId: string, rows: PreparedMedicationRow[],
+  options: { preserveOriginals?: boolean } = {}
 ): Promise<void> {
+  await lockMedicationOwner(tx, userId);
   const [owner] = await tx.select({ id: documents.id }).from(documents)
     .where(and(eq(documents.id, documentId), eq(documents.userId, userId))).limit(1);
   if (!owner) throw notFound('Document not found');
   const previous = await tx.select().from(medications)
     .where(and(eq(medications.documentId, documentId), eq(medications.userId, userId)));
   const remaining = new Map(previous.map((row) => [row.id, row]));
+  let changed = false;
   for (const row of rows) {
+    if (row.userId !== userId || row.documentId !== documentId) throw badRequest('Invalid medication source ownership.');
     const existing = previous.find((old) => old.sourceKey === row.sourceKey) ??
       previous.find((old) => old.sourceKey === null && remaining.has(old.id) && old.name === row.name);
     if (existing) {
       remaining.delete(existing.id);
-      await tx.update(medications).set(row).where(and(eq(medications.id, existing.id), eq(medications.userId, userId)));
+      if (options.preserveOriginals && existing.sourceKey) continue;
+      const updateValues = options.preserveOriginals
+        ? { sourceKey: row.sourceKey, updatedAt: new Date() }
+        : { ...row, ...(existing.patientStatus ? {
+            isActive: ['confirmed_current', 'prescribed_unconfirmed'].includes(existing.patientStatus),
+          } : {}) };
+      const before = { ...existing, updatedAt: undefined, createdAt: undefined };
+      const after = { ...existing, ...updateValues, updatedAt: undefined, createdAt: undefined };
+      if (stableJson(before) === stableJson(after)) continue;
+      changed = true;
+      await tx.insert(medicationAudit).values({
+        userId, medicationId: existing.id, action: 'source_observation_updated',
+        before: before as unknown as Record<string, unknown>,
+        after: after as unknown as Record<string, unknown>,
+        note: 'Source reprocessing updated extracted values; patient corrections remain separate.',
+      });
+      await tx.update(medications).set(updateValues)
+        .where(and(eq(medications.id, existing.id), eq(medications.userId, userId)));
     } else {
+      changed = true;
       await tx.insert(medications).values(row);
     }
   }
   for (const row of remaining.values()) {
     if (!row.sourceActive) continue;
+    if (options.preserveOriginals) continue;
+    changed = true;
     await tx.update(medications).set({ sourceActive: false, isActive: false, updatedAt: new Date() })
       .where(and(eq(medications.id, row.id), eq(medications.userId, userId)));
     await tx.insert(medicationAudit).values({
@@ -216,15 +261,40 @@ export async function synchronizeMedicationObservations(
       note: 'This observation was not reproduced on source reprocessing. No clinical discontinuation was inferred.',
     });
   }
-  await invalidateMedicationFindings(tx, userId, 'Source extraction changed; a new safety evaluation is required.');
+  if (changed || options.preserveOriginals) {
+    await invalidateMedicationFindings(tx, userId, 'Source extraction or patient information changed; a new safety evaluation is required.');
+  }
 }
 
 function findingMeaning(finding: SafetyFinding): string {
-  return JSON.stringify({
+  return stableJson({
     category: finding.category, medications: finding.medicationIds,
     title: finding.title, explanation: finding.explanation, certainty: finding.certainty,
     severity: finding.severity, evidence: finding.evidence,
     provider: finding.knowledgeSource?.provider, version: finding.knowledgeSource?.version,
+  });
+}
+
+/** Restricted briefing evaluations may reuse reviews without replacing global findings. */
+export async function applyMedicationFindingReviews(
+  userId: string, freshFindings: SafetyFinding[]
+): Promise<SafetyFinding[]> {
+  if (freshFindings.length > SNAPSHOT_LIMIT || freshFindings.some((finding) => finding.userId !== userId)) {
+    throw badRequest('Invalid safety review scope.');
+  }
+  if (!freshFindings.length) return [];
+  const keys = [...new Set(freshFindings.map((finding) => finding.id))];
+  const stored = await getDb().select().from(medicationFindings).where(and(
+    eq(medicationFindings.userId, userId), inArray(medicationFindings.findingKey, keys)
+  )).limit(SNAPSHOT_LIMIT);
+  const byKey = new Map(stored.map((row) => [row.findingKey, row]));
+  return freshFindings.map((finding) => {
+    const row = byKey.get(finding.id);
+    if (!row || findingMeaning(asFinding(row)) !== findingMeaning(finding)) return finding;
+    return {
+      ...finding, id: row.id, reviewStatus: row.reviewStatus as FindingReviewStatus,
+      resolutionNotes: row.resolutionNote, detectedAt: row.detectedAt.toISOString(),
+    };
   });
 }
 
@@ -236,8 +306,15 @@ export async function saveSafetyEvaluation(
     const current = await snapshot(tx, userId);
     if (current.revision !== evaluation.snapshotRevision) return false;
     const medicationIds = new Set(current.medications.map((medication) => medication.id));
+    const documentIds = new Set([...current.documents.map((document) => document.id), ...current.medications.map((medication) => medication.documentId)]);
+    const allergyIds = new Set(current.allergies.map((allergy) => allergy.id));
     if (evaluation.findings.some((finding) =>
-      finding.userId !== userId || finding.medicationIds.some((id) => !medicationIds.has(id))
+      finding.userId !== userId || finding.medicationIds.some((id) => !medicationIds.has(id)) ||
+      finding.evidence.some((evidence) =>
+        (evidence.documentId && !documentIds.has(evidence.documentId)) ||
+        (evidence.medicationId && !medicationIds.has(evidence.medicationId)) ||
+        (evidence.allergyId && !allergyIds.has(evidence.allergyId))
+      )
     )) throw badRequest('Invalid safety evaluation scope.');
     const previous = await tx.select().from(medicationFindings).where(eq(medicationFindings.userId, userId));
     const byKey = new Map(previous.map((row) => [row.findingKey, row]));
@@ -245,8 +322,12 @@ export async function saveSafetyEvaluation(
     for (const finding of evaluation.findings) {
       const old = byKey.get(finding.id);
       const changed = old && findingMeaning(asFinding(old)) !== findingMeaning(finding);
+      // Repeated reads of identical source data do not write every finding again.
+      // lastEvaluatedAt records the last persisted evaluation of changed data.
+      if (old?.active && old.evaluatedRevision === evaluation.snapshotRevision && !changed) continue;
       const values = {
         userId, findingKey: finding.id,
+        evaluatedRevision: evaluation.snapshotRevision,
         payload: finding as unknown as Record<string, unknown>, active: true,
         lastEvaluatedAt: new Date(), updatedAt: new Date(),
         ...(!old || changed ? {
@@ -273,7 +354,7 @@ export async function saveSafetyEvaluation(
         .where(and(eq(medicationFindings.id, old.id), eq(medicationFindings.userId, userId)));
       await tx.insert(medicationAudit).values({
         userId, findingId: old.id, action: 'finding_retired',
-        note: 'The finding is no longer supported by the evaluated source data.',
+        note: 'The finding is no longer supported within the evaluated records; partial coverage is possible. This is not a clinical resolution.',
       });
     }
     return true;
@@ -292,9 +373,12 @@ export async function updateMedicationRecord(userId: string, id: string, update:
   if (update.corrections && Object.keys(update.corrections).some((key) => !CORRECTION_FIELDS.includes(key as typeof CORRECTION_FIELDS[number]))) {
     throw badRequest('Unsupported medication correction.');
   }
-  await getDb().transaction(async (tx) => {
+  return getDb().transaction(async (tx) => {
     await lockMedicationOwner(tx, userId);
-    const [row] = await tx.select({ medication: medications }).from(medications)
+    const [row] = await tx.select({
+      medication: medications,
+      document: { id: documents.id, title: documents.title, documentType: documents.documentType, documentDate: documents.documentDate },
+    }).from(medications)
       .innerJoin(documents, and(eq(documents.id, medications.documentId), eq(documents.userId, userId)))
       .where(and(eq(medications.id, id), eq(medications.userId, userId))).limit(1);
     if (!row) throw notFound('Medication not found');
@@ -303,18 +387,20 @@ export async function updateMedicationRecord(userId: string, id: string, update:
       patientStatus: update.status ?? row.medication.patientStatus,
       corrections: { ...row.medication.corrections, ...update.corrections },
     };
-    await tx.update(medications).set({ ...after, confirmedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(medications.id, id), eq(medications.userId, userId)));
+    const [updated] = await tx.update(medications).set({
+      ...after, confirmedAt: new Date(), updatedAt: new Date(),
+      ...(update.status ? { isActive: ['confirmed_current', 'prescribed_unconfirmed'].includes(update.status) } : {}),
+    }).where(and(eq(medications.id, id), eq(medications.userId, userId))).returning();
     await tx.insert(medicationAudit).values({
       userId, medicationId: id,
       action: update.corrections ? 'patient_correction' : 'patient_confirmation',
       before, after, note: update.note.trim(),
     });
     await invalidateMedicationFindings(tx, userId, 'Patient information changed; a new safety evaluation is required.');
+    return medicationRecordFromRow(updated, {
+      ...row.document, documentDate: row.document.documentDate?.toISOString() ?? null,
+    });
   });
-  const result = (await getMedicationSnapshot(userId)).medications.find((row) => row.id === id);
-  if (!result) throw notFound('Medication not found in the current view');
-  return result;
 }
 
 export async function reviewMedicationFinding(

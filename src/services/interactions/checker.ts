@@ -1,9 +1,10 @@
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@/lib/db';
 import { getGroq, MODELS } from '@/lib/groq';
 import { medications, allergies, interactionChecks } from '../../../drizzle/schema';
 import { resolveDrugConcepts, type DrugConcept, type DrugQuery } from './rxnav-client';
+import type { MedicationCorrections, MedicationObservation } from '../medications/types';
 
 /**
  * What this can and cannot check.
@@ -111,10 +112,14 @@ async function fetchPatientProfile(userId: string) {
         frequency: medications.frequency,
         rxnormId: medications.rxnormId,
         isActive: medications.isActive,
+        sourceActive: medications.sourceActive,
+        patientStatus: medications.patientStatus,
+        observation: medications.observation,
+        corrections: medications.corrections,
       })
       .from(medications)
-      .where(eq(medications.userId, userId))
-      // Active first: an inactive medicine cannot interact with anything today.
+      .where(and(eq(medications.userId, userId), eq(medications.sourceActive, true)))
+      // Status remains evidence of documentation, not proof of current use.
       .orderBy(desc(medications.isActive), desc(medications.prescribedDate))
       .limit(PROFILE_LIMIT),
     getDb()
@@ -122,6 +127,7 @@ async function fetchPatientProfile(userId: string) {
         allergen: allergies.allergen,
         severity: allergies.severity,
         reaction: allergies.reaction,
+        assertionStatus: allergies.assertionStatus,
       })
       .from(allergies)
       .where(eq(allergies.userId, userId))
@@ -153,31 +159,14 @@ function normalize(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-/** Crude singularisation so "Penicillin" matches the class "Penicillins ...". */
-function singular(word: string): string {
-  return word.endsWith('s') && word.length > 4 ? word.slice(0, -1) : word;
-}
-
 /**
- * Whether a drug is covered by a recorded allergy.
- *
- * Name and ingredient equality alone is not enough, and the gap is dangerous: a
- * patient allergic to penicillin asking about amoxicillin got no warning, because
- * "amoxicillin" neither contains nor equals "penicillin". The link is the drug class —
- * amoxicillin's ATC class is J01CA "Penicillins with extended spectrum" — so the
- * allergen is checked against class names too.
+ * Exact substance evidence only. Class-name resemblance is not a validated allergy
+ * relationship; cross-reactivity remains explicitly unsupported.
  */
 function allergyMatches(drug: DrugConcept, allergenKey: string): boolean {
   if (!allergenKey) return false;
-  const needle = singular(allergenKey);
-
-  if (normalize(drug.query).split(' ').some((w) => singular(w) === needle)) return true;
-  if (drug.ingredients.some((i) => singular(normalize(i.name)) === needle)) return true;
-
-  // Class-level cover: "penicillin" against "Penicillins with extended spectrum".
-  return drug.classes.some((c) =>
-    normalize(c.className).split(' ').some((word) => singular(word) === needle)
-  );
+  return normalize(drug.query) === allergenKey ||
+    drug.ingredients.some((ingredient) => normalize(ingredient.name) === allergenKey);
 }
 
 /**
@@ -201,25 +190,14 @@ function deriveFindings(
     for (const allergy of allergens) {
       if (!allergyMatches(drug, allergy.key)) continue;
 
-      const sameSubstance =
-        normalize(drug.query).includes(allergy.key) ||
-        drug.ingredients.some((i) => normalize(i.name) === allergy.key);
-
       findings.push({
         items: [drug.query, allergy.allergen],
-        // A documented allergy to the same substance is the strongest signal available.
-        severity: allergy.severity?.toLowerCase() === 'severe' ? 'contraindicated' : 'severe',
-        description: sameSubstance
-          ? `Your record lists an allergy to ${allergy.allergen}${
+        // This legacy shape has a required severity field; info indicates an ungraded
+        // record finding, not a provider-defined clinical interaction severity.
+        severity: 'info',
+        description: `Your record lists an allergy to ${allergy.allergen}${
               allergy.reaction ? ` (reaction: ${allergy.reaction})` : ''
-            }, and ${drug.query} matches it.`
-          : `${drug.query} belongs to the ${
-              drug.classes.find((c) =>
-                normalize(c.className).split(' ').some((w) => singular(w) === singular(allergy.key))
-              )?.className ?? allergy.allergen
-            } group, and your record lists an allergy to ${allergy.allergen}${
-              allergy.reaction ? ` (reaction: ${allergy.reaction})` : ''
-            }.`,
+            }, and ${drug.query} matches its name or a verified ingredient. Ask a pharmacist or clinician to review the original records.`,
         source: 'allergy_record',
       });
     }
@@ -232,10 +210,10 @@ function deriveFindings(
       const label = currentLabels.get(med.query) ?? med.query;
       findings.push({
         items: [drug.query, label],
-        severity: 'moderate',
+        severity: 'info',
         description: `${drug.query} and ${label} both contain ${shared
           .map((i) => i.name)
-          .join(' and ')}. Taking both means taking that ingredient twice.`,
+          .join(' and ')}. This may reflect intentional prescribing or separate treatment episodes; confirm current use with a pharmacist or clinician.`,
         source: 'rxnorm_ingredient',
       });
     }
@@ -252,10 +230,10 @@ function deriveFindings(
       const label = currentLabels.get(med.query) ?? med.query;
       findings.push({
         items: [drug.query, label],
-        severity: 'mild',
+        severity: 'info',
         description: `${drug.query} and ${label} are both ${shared[0].className.toLowerCase()} (ATC ${
           shared[0].classId
-        }). Medicines in the same class often have overlapping effects.`,
+        }). This is a classification overlap, not evidence of a harmful combination or a prescribing error.`,
         source: 'rxnorm_class',
       });
     }
@@ -352,17 +330,27 @@ export async function checkInteractions(
   }
 
   const profile = await fetchPatientProfile(userId);
-  const activeMeds = profile.medications.filter((m) => m.isActive !== false);
+  const activeMeds = profile.medications.filter((med) => {
+    if (med.sourceActive === false) return false;
+    const status = med.patientStatus ?? (med.observation as MedicationObservation | null)?.status;
+    if (status && ['historical', 'discontinued', 'changed'].includes(status)) return false;
+    return med.patientStatus ? true : med.isActive !== false;
+  });
 
-  // Prefer the generic name for resolution; keep the brand name for display. The
-  // rxnormId recorded during extraction is passed through so the name lookup is
-  // skipped for every medicine already resolved once.
+  // Legacy stored RxCUIs/generic names may have come from model output. Only a verified
+  // observation identity may skip exact name lookup, and patient name edits invalidate it.
   const currentLabels = new Map<string, string>();
   const currentQueries: DrugQuery[] = [];
   for (const med of activeMeds) {
-    const resolveName = med.genericName ?? med.name;
-    currentQueries.push({ name: resolveName, rxcui: med.rxnormId });
-    currentLabels.set(resolveName, med.name);
+    const observation = med.observation as MedicationObservation | null;
+    const corrections = med.corrections as MedicationCorrections | null;
+    const resolveName = corrections && Object.hasOwn(corrections, 'name') ? corrections.name : med.name;
+    if (!resolveName?.trim()) continue;
+    const unchangedName = normalize(resolveName) === normalize(med.name);
+    const verified = unchangedName && observation?.normalization?.status === 'verified'
+      ? observation.normalization.rxcui : null;
+    currentQueries.push({ name: resolveName, rxcui: verified });
+    currentLabels.set(resolveName, resolveName);
   }
 
   const [queriedConcepts, currentConcepts] = await Promise.all([
@@ -374,12 +362,13 @@ export async function checkInteractions(
     queriedConcepts,
     currentConcepts,
     currentLabels,
-    profile.allergies
+    profile.allergies.filter((allergy) => !allergy.assertionStatus || allergy.assertionStatus === 'present')
   );
 
   // Foods and supplements mostly have no RxNorm concept; say so rather than implying
   // they were cleared.
-  const unverifiedItems = queriedConcepts.filter((c) => !c.rxcui).map((c) => c.query);
+  const unverifiedItems = [...new Set([...queriedConcepts, ...currentConcepts]
+    .filter((c) => !c.rxcui || !c.ingredients.length).map((c) => c.query))];
 
   const { summary, recommendation } = await explainFindings(
     query,
@@ -388,7 +377,12 @@ export async function checkInteractions(
     unverifiedItems
   );
 
-  const limitations = [DDI_LIMITATION];
+  const limitations = [
+    DDI_LIMITATION,
+    'Allergy cross-reactivity is not assessed. Only exact substance names and verified ingredient relationships are checked; class-name resemblance is insufficient.',
+    'Classification overlaps are informational. No clinical severity is assigned to these record-derived findings.',
+    `This legacy check considers at most ${PROFILE_LIMIT} medication and allergy records. Use the medication dashboard for the documented history and current-use review.`,
+  ];
   if (unverifiedItems.length > 0) {
     limitations.push(
       `These were not found in the RxNorm drug database and could not be checked: ${unverifiedItems.join(', ')}.`

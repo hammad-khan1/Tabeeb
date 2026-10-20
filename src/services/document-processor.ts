@@ -28,11 +28,11 @@ import { parseMedicalValue, isOutOfRange } from '@/lib/medical-values';
 import { generateDocumentSummary } from '@/services/summarizer';
 import { estimateTokenCount } from '@/lib/tokens';
 import { classifyModelFailure, withModelRetry } from '@/lib/model-errors';
-import { prepareMedicationRows, type PreparedMedicationRow } from '@/services/medications/observations';
+import { prepareMedicationRows, medicationSourceKeys, exactMedicationDate, type PreparedMedicationRow } from '@/services/medications/observations';
 import {
-  lockMedicationOwner, synchronizeMedicationObservations, invalidateMedicationFindings,
+  lockMedicationOwner, synchronizeMedicationObservations,
 } from '@/services/medications/repository';
-import { badRequest, notFound } from '@/lib/api-error';
+import { ApiError, badRequest, notFound } from '@/lib/api-error';
 
 // Re-exported for callers that already import it from here.
 export { estimateTokenCount };
@@ -328,26 +328,6 @@ function buildEntityRows(
   data: ValidatedExtraction,
   fallbackDate: Date
 ) {
-  const medicationRows = data.medications
-    .map((m) => {
-      const name = clamp(m.name, 500);
-      if (!name) return null;
-      return {
-        documentId,
-        userId,
-        name,
-        genericName: clamp(m.genericName, 500),
-        dosage: clamp(m.dosage, 255),
-        frequency: clamp(m.frequency, 255),
-        duration: clamp(m.duration, 255),
-        route: clamp(m.route, 100),
-        rxnormId: clamp(m.rxnormId, 50),
-        isActive: m.isActive ?? true,
-        prescribedDate: safeDate(m.prescribedDate),
-      };
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null);
-
   // A condition the document denies, attributes to a relative, or raises as advice
   // about what to do if it happens is not this patient's problem, and must never
   // become a row in their record. The reconciler explains each one in the document's
@@ -436,68 +416,84 @@ function buildEntityRows(
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
-  return { medicationRows, diagnosisRows, labResultRows, allergyRows };
+  return { diagnosisRows, labResultRows, allergyRows };
 }
 
-/**
- * Clearing derived rows and writing the new ones is a single transaction. These were
- * separate statement batches, so a failure between them — an embedding timeout was
- * the likely one — left the document stripped of its medications, labs and chunks
- * with nothing to rebuild them from. Reprocessing a working document could destroy it.
- */
+/** External lookups finish before entering the source replacement transaction. */
+async function prepareChunkRows(documentId: string, userId: string, chunks: DocumentChunk[]) {
+  if (chunks.length === 0) return [];
+  const embeddings = await embeddingProvider.embedBatch(chunks.map((chunk) => chunk.content), 'passage');
+  return chunks.map((chunk, index) => ({
+    documentId, userId, chunkIndex: index, content: chunk.content,
+    embedding: embeddings[index], tokenCount: chunk.tokenCount, section: chunk.section,
+  }));
+}
+
+type DerivedDataOptions = {
+  insertEntities: boolean;
+  medicationRows: PreparedMedicationRow[];
+  chunks: Awaited<ReturnType<typeof prepareChunkRows>>;
+  documentUpdates: Partial<typeof documents.$inferInsert>;
+  expectedUpdatedAt?: Date | null;
+  processingToken?: Date;
+  medicationConfirmations?: Array<{ sourceKey: string; corrections: Record<string, string | null> }>;
+};
+
+/** A failed embedding or transaction leaves the previous complete extraction intact. */
 async function rebuildDerivedData(
   documentId: string,
   userId: string,
   data: ValidatedExtraction,
   fallbackDate: Date,
-  options: { insertEntities: boolean }
+  options: DerivedDataOptions
 ): Promise<void> {
-  const { medicationRows, diagnosisRows, labResultRows, allergyRows } = buildEntityRows(
-    documentId,
-    userId,
-    data,
-    fallbackDate
-  );
-
+  const { diagnosisRows, labResultRows, allergyRows } = buildEntityRows(documentId, userId, data, fallbackDate);
   await getDb().transaction(async (tx) => {
-    await tx.delete(documentChunks).where(eq(documentChunks.documentId, documentId));
-    await tx.delete(medications).where(eq(medications.documentId, documentId));
-    await tx.delete(diagnoses).where(eq(diagnoses.documentId, documentId));
-    await tx.delete(labResults).where(eq(labResults.documentId, documentId));
-    await tx.delete(allergies).where(eq(allergies.documentId, documentId));
-
-    if (!options.insertEntities) return;
-
-    if (medicationRows.length > 0) await tx.insert(medications).values(medicationRows);
-    if (diagnosisRows.length > 0) await tx.insert(diagnoses).values(diagnosisRows);
-    if (labResultRows.length > 0) await tx.insert(labResults).values(labResultRows);
-    if (allergyRows.length > 0) await tx.insert(allergies).values(allergyRows);
+    await lockMedicationOwner(tx, userId);
+    const [current] = await tx.select().from(documents)
+      .where(and(eq(documents.id, documentId), eq(documents.userId, userId))).for('update').limit(1);
+    if (!current) throw notFound('Document not found');
+    if (options.processingToken && current.processingStartedAt?.getTime() !== options.processingToken.getTime()) {
+      throw new ApiError(409, 'The document changed during processing. Refresh and retry.');
+    }
+    if (options.expectedUpdatedAt && current.updatedAt?.getTime() !== options.expectedUpdatedAt.getTime()) {
+      throw new ApiError(409, 'The document changed during confirmation. Refresh and retry.');
+    }
+    await tx.delete(documentChunks).where(and(eq(documentChunks.documentId, documentId), eq(documentChunks.userId, userId)));
+    // An uncertain new OCR pass must not erase established allergy/clinical facts.
+    // Replace them only once extraction is sufficiently reliable or confirmed.
+    if (options.insertEntities) {
+      await tx.delete(diagnoses).where(and(eq(diagnoses.documentId, documentId), eq(diagnoses.userId, userId)));
+      await tx.delete(labResults).where(and(eq(labResults.documentId, documentId), eq(labResults.userId, userId)));
+      await tx.delete(allergies).where(and(eq(allergies.documentId, documentId), eq(allergies.userId, userId)));
+    }
+    await synchronizeMedicationObservations(tx, userId, documentId, options.medicationRows, {
+      preserveOriginals: options.medicationConfirmations !== undefined,
+    });
+    for (const confirmation of options.medicationConfirmations ?? []) {
+      const [record] = await tx.select().from(medications).where(and(
+        eq(medications.documentId, documentId), eq(medications.userId, userId), eq(medications.sourceKey, confirmation.sourceKey)
+      )).limit(1);
+      if (!record) continue;
+      const corrections = { ...record.corrections, ...confirmation.corrections };
+      await tx.update(medications).set({ corrections, confirmedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(medications.id, record.id), eq(medications.userId, userId)));
+      await tx.insert(medicationAudit).values({
+        userId, medicationId: record.id,
+        action: Object.keys(confirmation.corrections).length ? 'patient_correction' : 'extraction_confirmed',
+        before: { corrections: record.corrections }, after: { corrections },
+        note: 'Patient reviewed extraction. This does not confirm current medication use.',
+      });
+    }
+    if (options.insertEntities) {
+      if (diagnosisRows.length) await tx.insert(diagnoses).values(diagnosisRows);
+      if (labResultRows.length) await tx.insert(labResults).values(labResultRows);
+      if (allergyRows.length) await tx.insert(allergies).values(allergyRows);
+    }
+    if (options.chunks.length) await tx.insert(documentChunks).values(options.chunks);
+    await tx.update(documents).set(options.documentUpdates)
+      .where(and(eq(documents.id, documentId), eq(documents.userId, userId)));
   });
-}
-
-// ── Generate embeddings and store chunks ─────────────────────────────────────
-
-async function embedAndStoreChunks(
-  documentId: string,
-  userId: string,
-  chunks: DocumentChunk[]
-): Promise<void> {
-  if (chunks.length === 0) return;
-
-  const texts = chunks.map((c) => c.content);
-  const embeddings = await embeddingProvider.embedBatch(texts, 'passage');
-
-  const rows = chunks.map((chunk, i) => ({
-    documentId,
-    userId,
-    chunkIndex: i,
-    content: chunk.content,
-    embedding: embeddings[i],
-    tokenCount: chunk.tokenCount,
-    section: chunk.section,
-  }));
-
-  await getDb().insert(documentChunks).values(rows);
 }
 
 // ── Main orchestrator ───────────────────────────────────────────────────────
@@ -525,194 +521,174 @@ async function loadOwnedDocument(documentId: string, userId: string) {
     .limit(1);
 
   if (!doc) {
-    throw new Error(`Document not found: ${documentId}`);
+    throw notFound('Document not found');
   }
   return doc;
 }
 
 export async function processDocument(documentId: string, userId: string): Promise<void> {
   const doc = await loadOwnedDocument(documentId, userId);
-
+  const processingToken = new Date();
   try {
-    await getDb()
-      .update(documents)
-      .set({
-        extractionStatus: 'processing',
-        processingStartedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(documents.id, documentId));
+    await getDb().update(documents).set({
+      extractionStatus: 'processing', processingStartedAt: processingToken, updatedAt: processingToken,
+    }).where(and(eq(documents.id, documentId), eq(documents.userId, userId)));
 
-    // Derived rows are deliberately NOT cleared here. They are replaced in one
-    // transaction once the new set is ready, so a failure part-way leaves the
-    // previous good extraction in place rather than an empty record.
     const buffer = await getStorage().read(doc.storagePath);
     const extraction = await extractText(buffer, doc.mimeType);
     const text = extraction.text.trim();
     const confidence = extraction.confidence ?? null;
-
     if (!text) {
-      await getDb()
-        .update(documents)
-        .set({
-          extractionStatus: 'needs_review',
-          isScannedPdf: extraction.isScanned ?? doc.isScannedPdf,
-          rawExtractedText: '',
-          extractionConfidence: confidence,
-          extractionNotes:
-            'No readable text could be extracted from this file. Try uploading a sharper photo or scan.',
-          processingStartedAt: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(documents.id, documentId));
+      await getDb().update(documents).set({
+        extractionStatus: 'needs_review',
+        extractionNotes: 'No readable text could be extracted. Previous observations were retained; verify the original source.',
+        processingStartedAt: null, updatedAt: new Date(),
+      }).where(and(eq(documents.id, documentId), eq(documents.userId, userId), eq(documents.processingStartedAt, processingToken)));
       return;
     }
 
-    await getDb()
-      .update(documents)
-      .set({
-        rawExtractedText: text,
-        isHandwritten: extraction.isHandwritten ?? doc.isHandwritten,
-        isScannedPdf: extraction.isScanned ?? doc.isScannedPdf,
-        extractionConfidence: confidence,
-        updatedAt: new Date(),
-      })
-      .where(eq(documents.id, documentId));
-
     const raw = await extractStructuredData(text, doc.documentType);
-    const reconciliation = await reconcileExtraction(text, raw);
+    // The medication engine uses exact, validated terminology separately. Never
+    // feed approximate legacy RxCUIs into verified medication identity.
+    const reconciliation = await reconcileExtraction(text, raw, { skipDrugNormalization: true });
     const structured = reconciliation.extraction;
-    const documentDate = safeDate(structured.documentDate) ?? doc.documentDate;
-
-    await getDb()
-      .update(documents)
-      .set({
-        structuredData: structured as unknown as Record<string, unknown>,
-        hospital: clamp(structured.hospital, 500) ?? doc.hospital,
-        doctorName: clamp(structured.doctorName, 255) ?? doc.doctorName,
-        documentDate,
-        language: structured.language ?? doc.language,
-        updatedAt: new Date(),
-      })
-      .where(eq(documents.id, documentId));
-
-    const notes: string[] = [...reconciliation.notes];
-
+    const documentDate = exactMedicationDate(structured.documentDate) ?? doc.documentDate;
     const lowConfidence = confidence !== null && confidence < LOW_CONFIDENCE_THRESHOLD;
-
-    if (lowConfidence) {
-      notes.push(
-        `OCR confidence was low (${confidence}%). Medications and lab values were not added to your health record yet — review the extracted text and confirm to save them.`
-      );
-    }
-
-    // One transaction swaps the old derived rows for the new ones.
-    await rebuildDerivedData(documentId, userId, structured, documentDate ?? new Date(), {
-      insertEntities: !lowConfidence,
-    });
+    const notes = [...reconciliation.notes];
+    if (lowConfidence) notes.push(`OCR confidence was low (${confidence}%). Medication observations require verification; other entities await confirmation.`);
+    if (isExtractionEmpty(structured)) notes.push('No medical entities were identified. Review the source document.');
+    if (extraction.isHandwritten) notes.push('Handwritten content detected. Verify medicine names and numbers against the original.');
 
     const chunks = chunkDocument(text, {
       documentType: doc.documentType,
       hospital: structured.hospital ?? doc.hospital ?? undefined,
       date: documentDate?.toISOString().slice(0, 10),
     });
-
-    await embedAndStoreChunks(documentId, userId, chunks);
-
-    if (isExtractionEmpty(structured)) {
-      notes.push('No medical entities were identified in this document — please review the extracted text.');
-    }
-    if (extraction.isHandwritten) {
-      notes.push('Handwritten content detected — please verify drug names and numbers against the original.');
-    }
-
-    const needsReview = lowConfidence || isExtractionEmpty(structured);
-
-    const summary = await generateDocumentSummary({
-      text,
-      extraction: structured,
-      documentType: doc.documentType,
-      language: structured.language ?? doc.language ?? 'mixed',
-      preferredLanguage: await getPreferredLanguage(userId),
-      isHandwritten: extraction.isHandwritten ?? doc.isHandwritten ?? false,
-      confidence,
+    const preferredLanguage = await getPreferredLanguage(userId);
+    const [medicationRows, chunkRows, summary] = await Promise.all([
+      prepareMedicationRows({ documentId, userId, data: structured, text, documentDate, lowConfidence }),
+      prepareChunkRows(documentId, userId, chunks),
+      generateDocumentSummary({
+        text, extraction: structured, documentType: doc.documentType,
+        language: structured.language ?? doc.language ?? 'mixed',
+        preferredLanguage,
+        isHandwritten: extraction.isHandwritten ?? doc.isHandwritten ?? false, confidence,
+      }),
+    ]);
+    await rebuildDerivedData(documentId, userId, structured, documentDate ?? new Date(), {
+      insertEntities: !lowConfidence, medicationRows, chunks: chunkRows, processingToken,
+      documentUpdates: {
+        rawExtractedText: text, structuredData: structured as unknown as Record<string, unknown>,
+        hospital: clamp(structured.hospital, 500) ?? doc.hospital,
+        doctorName: clamp(structured.doctorName, 255) ?? doc.doctorName,
+        documentDate, language: structured.language ?? doc.language,
+        isHandwritten: extraction.isHandwritten ?? doc.isHandwritten,
+        isScannedPdf: extraction.isScanned ?? doc.isScannedPdf,
+        extractionConfidence: confidence, summary,
+        extractionStatus: lowConfidence || isExtractionEmpty(structured) ? 'needs_review' : 'confirmed',
+        extractionNotes: notes.length ? notes.join(' ') : null,
+        processingStartedAt: null, updatedAt: new Date(),
+      },
     });
-
-    await getDb()
-      .update(documents)
-      .set({
-        summary,
-        extractionStatus: needsReview ? 'needs_review' : 'confirmed',
-        extractionNotes: notes.length > 0 ? notes.join(' ') : null,
-        processingStartedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(documents.id, documentId));
   } catch (error) {
     const failure = classifyModelFailure(error);
-
-    // A document that could not be processed because the AI service was rate limited
-    // is not a bad document. Telling the patient to "re-upload a clearer scan" for a
-    // quota error sends them off to re-photograph something that was fine, so the
-    // status and the message now reflect which of the two actually happened.
-    await getDb()
-      .update(documents)
-      .set({
-        extractionStatus: failure.kind === 'permanent' ? 'failed' : 'pending',
-        extractionNotes: failure.userMessage,
-        processingStartedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(documents.id, documentId));
-
-    console.error(`[DocumentProcessor] ${documentId} (${failure.kind}): ${failure.detail}`);
+    await getDb().update(documents).set({
+      extractionStatus: failure.kind === 'permanent' ? 'failed' : 'pending',
+      extractionNotes: failure.userMessage, processingStartedAt: null, updatedAt: new Date(),
+    }).where(and(eq(documents.id, documentId), eq(documents.userId, userId), eq(documents.processingStartedAt, processingToken)));
+    // Model errors can contain source text; logs carry only an operational category.
+    console.error(`[DocumentProcessor] processing failed (${failure.kind})`);
     throw error;
   }
 }
 
-/**
- * Applies text/entity corrections the user confirmed in the review UI: entities held
- * back during low-confidence extraction are written now, and chunks are re-embedded
- * so the corrected text is what RAG actually searches.
- */
+/** Map review edits to separate patient fields, preserving source medication values. */
+export function extractionMedicationCorrections(
+  original: ValidatedExtraction['medications'], edited: ValidatedExtraction['medications']
+): Array<{ index: number; corrections: Record<string, string | null> }> {
+  if (original.length !== edited.length) {
+    throw badRequest('Medication additions/removals require source reprocessing. Correct existing medication details in the medication dashboard.');
+  }
+  const fields = ['name', 'dosage', 'frequency', 'duration', 'route', 'strength', 'doseAmount', 'instructions'] as const;
+  const used = new Set<number>();
+  const matched = new Map<number, number>();
+  // Reserve unchanged observations first, across the entire array. This makes
+  // reordered same-name strengths a no-op instead of exchanging their corrections.
+  original.forEach((before, index) => {
+    const exact = edited.findIndex((after, candidate) =>
+      !used.has(candidate) && fields.every((field) => (before[field] ?? null) === (after[field] ?? null))
+    );
+    if (exact >= 0) {
+      matched.set(index, exact);
+      used.add(exact);
+    }
+  });
+  return original.map((before, index) => {
+    let candidate = matched.get(index);
+    if (candidate === undefined) {
+      const sameName = edited.flatMap((after, candidate) =>
+        !used.has(candidate) && after.name === before.name ? [candidate] : []
+      );
+      const unmatchedOriginals = original.filter((entry, originalIndex) =>
+        !matched.has(originalIndex) && entry.name === before.name
+      );
+      if (sameName.length > 1 || unmatchedOriginals.length > 1) {
+        throw badRequest('Ambiguous medication correction. Correct each medication separately in the medication dashboard.');
+      }
+      candidate = sameName[0] ?? index;
+      if (used.has(candidate)) throw badRequest('Ambiguous medication correction. Correct each medication separately in the medication dashboard.');
+      used.add(candidate);
+      matched.set(index, candidate);
+    }
+    const after = edited[candidate];
+    const corrections: Record<string, string | null> = {};
+    for (const field of fields) {
+      if ((before[field] ?? null) !== (after[field] ?? null)) corrections[field] = clamp(after[field], field === 'instructions' ? 2000 : 500);
+    }
+    return { index, corrections };
+  });
+}
+
+/** Confirmation and all derived changes commit together, after external work succeeds. */
 export async function applyConfirmedExtraction(
   documentId: string,
-  userId: string
+  userId: string,
+  edits: { correctedText?: string; structuredData?: unknown } = {}
 ): Promise<void> {
   const doc = await loadOwnedDocument(documentId, userId);
-
-  const structured = parseStructuredExtraction(doc.structuredData);
-  const text = (doc.rawExtractedText ?? '').trim();
-
+  if (doc.extractionStatus === 'processing') throw new ApiError(409, 'Wait for document processing to finish before confirming.');
+  const original = parseStructuredExtraction(doc.structuredData);
+  const edited = edits.structuredData === undefined ? original : parseStructuredExtraction(edits.structuredData);
+  const corrections = extractionMedicationCorrections(original.medications, edited.medications);
+  // Medication originals stay in structuredData too. Corrections live on their own
+  // records and in audit history, not disguised as text from the uploaded file.
+  const structured = { ...edited, medications: original.medications };
+  const text = (edits.correctedText ?? doc.rawExtractedText ?? '').trim();
+  const preferredLanguage = await getPreferredLanguage(userId);
+  const [rows, chunkRows, summary] = await Promise.all([
+    prepareMedicationRows({
+      documentId, userId, data: original, text: doc.rawExtractedText ?? '',
+      documentDate: doc.documentDate, lowConfidence: (doc.extractionConfidence ?? 100) < LOW_CONFIDENCE_THRESHOLD,
+    }),
+    prepareChunkRows(documentId, userId, chunkDocument(text, {
+      documentType: doc.documentType, hospital: doc.hospital ?? undefined,
+      date: doc.documentDate?.toISOString().slice(0, 10),
+    })),
+    generateDocumentSummary({
+      text, extraction: structured, documentType: doc.documentType,
+      language: structured.language ?? doc.language ?? 'mixed',
+      preferredLanguage,
+      isHandwritten: doc.isHandwritten ?? false, confidence: doc.extractionConfidence,
+    }),
+  ]);
+  const keys = medicationSourceKeys(original.medications);
   await rebuildDerivedData(documentId, userId, structured, doc.documentDate ?? new Date(), {
-    // Imaging findings come from the vision pass, not from the confirmed text, so
-    // they are left alone here.
-    insertEntities: true,
+    insertEntities: true, medicationRows: rows, chunks: chunkRows, expectedUpdatedAt: doc.updatedAt,
+    medicationConfirmations: corrections.map((entry) => ({ sourceKey: keys[entry.index], corrections: entry.corrections })),
+    documentUpdates: {
+      rawExtractedText: text, structuredData: structured as unknown as Record<string, unknown>,
+      summary, extractionStatus: 'confirmed', extractionNotes: null,
+      processingStartedAt: null, updatedAt: new Date(),
+    },
   });
-
-  if (!text) return;
-
-  const chunks = chunkDocument(text, {
-    documentType: doc.documentType,
-    hospital: doc.hospital ?? undefined,
-    date: doc.documentDate?.toISOString().slice(0, 10),
-  });
-  await embedAndStoreChunks(documentId, userId, chunks);
-
-  const summary = await generateDocumentSummary({
-    text,
-    extraction: structured,
-    documentType: doc.documentType,
-    language: structured.language ?? doc.language ?? 'mixed',
-    preferredLanguage: await getPreferredLanguage(userId),
-    isHandwritten: doc.isHandwritten ?? false,
-    confidence: doc.extractionConfidence,
-  });
-
-  if (summary) {
-    await getDb()
-      .update(documents)
-      .set({ summary, updatedAt: new Date() })
-      .where(eq(documents.id, documentId));
-  }
 }

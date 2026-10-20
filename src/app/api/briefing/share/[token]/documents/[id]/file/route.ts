@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, gte, lte } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { consume } from '@/lib/rate-limit';
 import { errorResponse } from '@/lib/api-error';
 import { getStorage } from '@/lib/storage';
 import { briefingShareLinks, documents } from '../../../../../../../../../drizzle/schema';
+import { permitsOriginalDocuments } from '@/services/briefing/share';
 
 export async function GET(
   request: NextRequest,
@@ -23,6 +24,9 @@ export async function GET(
         documentIds: briefingShareLinks.documentIds,
         isActive: briefingShareLinks.isActive,
         expiresAt: briefingShareLinks.expiresAt,
+        includedSections: briefingShareLinks.includedSections,
+        dateRangeFrom: briefingShareLinks.dateRangeFrom,
+        dateRangeTo: briefingShareLinks.dateRangeTo,
       })
       .from(briefingShareLinks)
       .where(
@@ -38,6 +42,12 @@ export async function GET(
       return NextResponse.json(
         { error: 'This doctor briefing link is no longer available. It may have expired or been revoked.' },
         { status: 404 }
+      );
+    }
+    if (!permitsOriginalDocuments(link.includedSections)) {
+      return NextResponse.json(
+        { error: 'Original documents are withheld because this briefing shares selected sections only.' },
+        { status: 404, headers: { 'Cache-Control': 'private, no-store' } }
       );
     }
 
@@ -60,7 +70,11 @@ export async function GET(
         storagePath: documents.storagePath,
       })
       .from(documents)
-      .where(and(eq(documents.id, id), eq(documents.userId, link.userId)))
+      .where(and(
+        eq(documents.id, id), eq(documents.userId, link.userId),
+        link.dateRangeFrom ? gte(documents.documentDate, link.dateRangeFrom) : undefined,
+        link.dateRangeTo ? lte(documents.documentDate, link.dateRangeTo) : undefined,
+      ))
       .limit(1);
 
     if (!doc) {

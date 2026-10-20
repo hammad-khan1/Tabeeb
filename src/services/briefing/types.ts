@@ -1,3 +1,5 @@
+import type { MedicationCorrections, MedicationEvaluation, MedicationStatus } from '@/services/medications/types';
+
 export type DoctorSourceType = 'extracted' | 'patient_entered' | 'verified';
 export type TreatmentRole = 'prescribing' | 'reviewing' | 'mentioned';
 export type TreatmentStatus = 'active' | 'historical' | 'discontinued';
@@ -29,6 +31,8 @@ export interface AttributedMedication {
   route: string | null;
   prescribedDate: string | null;
   status: TreatmentStatus;
+  useStatus?: MedicationStatus;
+  patientCorrections?: MedicationCorrections;
   prescribingDoctor: {
     name: string;
     specialty: string | null;
@@ -107,7 +111,7 @@ export interface TreatmentConflict {
 
 export interface DoctorTimelineEvent {
   id: string;
-  date: string;
+  date: string | null;
   type: 'consultation' | 'prescription' | 'medication_change' | 'lab_order' | 'lab_result' | 'diagnosis' | 'treatment_plan';
   title: string;
   description: string;
@@ -182,7 +186,7 @@ export interface BriefingAllergy {
 
 export interface BriefingConsultationPlan {
   id: string;
-  date: string;
+  date: string | null;
   doctorName: string;
   specialty?: string | null;
   hospital?: string | null;
@@ -205,6 +209,7 @@ export interface PatientBriefingData {
     preferredLanguage: string;
   };
   clinicalSummary: string;
+  medicationSafety?: MedicationEvaluation | null;
   conditions: BriefingCondition[];
   doctors: DoctorProfile[];
   currentMedications: AttributedMedication[];

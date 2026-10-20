@@ -28,26 +28,19 @@ export async function POST(
       request
     );
 
+    // Confirmation, patient corrections, and derived data commit together. An
+    // upstream embedding failure must not mark incomplete processing confirmed.
+    await applyConfirmedExtraction(id, userId, { correctedText, structuredData });
     const [updated] = await getDb()
-      .update(documents)
-      .set({
-        extractionStatus: 'confirmed',
-        extractionNotes: null,
-        ...(correctedText !== undefined && { rawExtractedText: correctedText }),
-        ...(structuredData !== undefined && { structuredData }),
-        updatedAt: new Date(),
-      })
+      .select()
+      .from(documents)
       .where(and(eq(documents.id, id), eq(documents.userId, userId)))
-      .returning();
+      .limit(1);
 
     if (!updated) throw notFound('Document not found');
 
-    // Rebuilds entities and re-embeds chunks from the corrected text, so what RAG
-    // searches is what the patient actually confirmed.
-    await applyConfirmedExtraction(id, userId);
-
     const { storagePath: _storagePath, ...safe } = updated;
-    return NextResponse.json(safe);
+    return NextResponse.json(safe, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     return errorResponse(
       'POST /api/documents/[id]/confirm-extraction',

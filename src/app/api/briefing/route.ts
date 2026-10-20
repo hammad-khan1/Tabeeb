@@ -3,6 +3,8 @@ import { getCurrentUserId } from '@/lib/auth';
 import { consume } from '@/lib/rate-limit';
 import { errorResponse } from '@/lib/api-error';
 import { generatePatientBriefing } from '@/services/briefing/briefing-generator';
+import { parseOrThrow } from '@/lib/validation';
+import { briefingFilterSchema } from '@/services/briefing/filter-schema';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,20 +27,21 @@ export async function GET(request: NextRequest) {
     }
 
     const docIdsRaw = searchParams.get('documentIds');
-    const documentIds = docIdsRaw
+    const documentIds = docIdsRaw !== null
       ? docIdsRaw
           .split(',')
           .map((id) => id.trim())
           .filter(Boolean)
       : undefined;
 
-    const briefing = await generatePatientBriefing(userId, {
+    const options = parseOrThrow(briefingFilterSchema, {
       from,
       to,
       documentIds,
     });
+    const briefing = await generatePatientBriefing(userId, options);
 
-    return NextResponse.json(briefing);
+    return NextResponse.json(briefing, { headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie' } });
   } catch (error) {
     return errorResponse('GET /api/briefing', error, 'Failed to generate patient briefing');
   }

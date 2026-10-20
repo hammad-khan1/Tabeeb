@@ -85,12 +85,15 @@ export function sourceDocumentUrl(documentId: string | null, page: number | null
   return `/api/documents/${documentId}/file${suffix}`;
 }
 
-export function EvidenceList({ evidence }: { evidence: MedicationEvidence[] }) {
+export function EvidenceList({ evidence, sourceHref }: {
+  evidence: MedicationEvidence[];
+  sourceHref?: (documentId: string | null, page: number | null) => string | null;
+}) {
   const { t } = useLocale();
   return (
     <ul className="space-y-3">
       {evidence.map((source, index) => {
-        const href = sourceDocumentUrl(source.documentId, source.page);
+        const href = (sourceHref ?? sourceDocumentUrl)(source.documentId, source.page);
         const label = source.kind === 'patient' ? t('medications.patientReported')
           : source.kind === 'allergy_record' ? t('medications.allergyRecord')
             : source.documentTitle || t('medications.document');

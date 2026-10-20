@@ -55,10 +55,13 @@ export async function getRxNormId(drugName: string): Promise<string | null> {
   if (!term) return null;
 
   const data = (await getJson(
-    `${RXNAV_BASE}/rxcui.json?name=${encodeURIComponent(term)}`
+    `${RXNAV_BASE}/rxcui.json?name=${encodeURIComponent(term)}&search=0`
   )) as { idGroup?: { rxnormId?: string[] } } | null;
 
-  return data?.idGroup?.rxnormId?.[0] ?? null;
+  const identifiers = data?.idGroup?.rxnormId;
+  if (!Array.isArray(identifiers)) return null;
+  const unique = [...new Set(identifiers.filter((id) => typeof id === 'string' && /^\d{1,12}$/.test(id)))];
+  return unique.length === 1 ? unique[0] : null;
 }
 
 interface RelatedResponse {
@@ -87,6 +90,16 @@ export async function getIngredients(
       name: (concept.name ?? '').toLowerCase(),
     }))
     .filter((concept) => concept.rxcui && concept.name);
+}
+
+/** A concept is its own ingredient only when RxNorm explicitly classifies it as IN. */
+async function verifiedOwnIngredient(rxcui: string): Promise<Array<{ rxcui: string; name: string }>> {
+  const data = (await getJson(
+    `${RXNAV_BASE}/rxcui/${encodeURIComponent(rxcui)}/properties.json`
+  )) as { properties?: { rxcui?: string; tty?: string; name?: string } } | null;
+  const properties = data?.properties;
+  return properties?.tty === 'IN' && properties.rxcui === rxcui && properties.name
+    ? [{ rxcui, name: properties.name.toLowerCase() }] : [];
 }
 
 interface RxClassResponse {
@@ -202,11 +215,12 @@ export async function resolveDrugConcepts(
       getTherapeuticClasses(rxcui),
     ]);
 
-    // A single-ingredient concept is its own ingredient; RxNav sometimes omits it.
-    const resolved =
-      ingredients.length > 0 ? ingredients : [{ rxcui, name: query.toLowerCase() }];
+    // An empty relationship response may be an outage or a product concept. Never invent
+    // an ingredient from the caller's name. Only an explicitly verified IN can identify itself.
+    const resolved = ingredients.length > 0 ? ingredients : await verifiedOwnIngredient(rxcui);
 
-    return cacheConcept(cacheKey, { query, rxcui, ingredients: resolved, classes });
+    const concept = { query, rxcui, ingredients: resolved, classes };
+    return resolved.length > 0 ? cacheConcept(cacheKey, concept) : concept;
   });
 }
 

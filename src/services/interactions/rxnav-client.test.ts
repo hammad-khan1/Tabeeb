@@ -87,4 +87,33 @@ describe('resolveDrugConcepts', () => {
   it('ignores blank entries', async () => {
     expect(await resolveDrugConcepts(['', '   ', { name: '' }])).toEqual([]);
   });
+
+  it('rejects ambiguous exact name matches instead of choosing the first identity', async () => {
+    globalThis.fetch = vi.fn(async () => Response.json({ idGroup: { rxnormId: ['123', '456'] } })) as typeof fetch;
+    const [concept] = await resolveDrugConcepts(['Ambiguous name']);
+    expect(concept.rxcui).toBeNull();
+    expect(concept.ingredients).toEqual([]);
+  });
+
+  it('does not invent an ingredient for a product after an empty ingredient response', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/properties.json')) {
+        return Response.json({ properties: { rxcui: '12345', tty: 'SCD', name: 'Product tablet' } });
+      }
+      return Response.json({});
+    }) as typeof fetch;
+    const [concept] = await resolveDrugConcepts([{ name: 'Caller guess', rxcui: '12345' }]);
+    expect(concept.ingredients).toEqual([]);
+  });
+
+  it('uses a canonical ingredient concept only after verifying its concept type', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/properties.json')) {
+        return Response.json({ properties: { rxcui: '6809', tty: 'IN', name: 'metformin' } });
+      }
+      return Response.json({});
+    }) as typeof fetch;
+    const [concept] = await resolveDrugConcepts([{ name: 'Caller guess', rxcui: '6809' }]);
+    expect(concept.ingredients).toEqual([{ rxcui: '6809', name: 'metformin' }]);
+  });
 });

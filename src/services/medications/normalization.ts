@@ -52,7 +52,9 @@ export async function normalizeMedicationIdentity(name: string): Promise<Medicat
   if (!name || name.length > 200 || /\[unclear|[?]/i.test(name)) {
     return unresolvedMedicationIdentity('ambiguous', 'The documented name is incomplete or marked unclear; verify it against the source.');
   }
-  const term = stripDrugNameNoise(name);
+  // Combination separators carry identity information. Preserve the full query when
+  // present instead of collapsing two ingredients into a possibly different name.
+  const term = /[+/]/.test(name) ? name.trim().replace(/\s+/g, ' ') : stripDrugNameNoise(name);
   if (term.length < 2) return unresolvedMedicationIdentity();
   const key = term.toLowerCase();
   const cached = cache.get(key);

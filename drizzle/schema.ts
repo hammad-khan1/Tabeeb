@@ -125,6 +125,7 @@ export const medicationFindings = pgTable('medication_findings', {
   userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   findingKey: varchar('finding_key', { length: 128 }).notNull(),
   payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  evaluatedRevision: varchar('evaluated_revision', { length: 64 }).notNull(),
   /** Retired findings remain auditable but cannot be presented as current. */
   active: boolean('active').notNull().default(true),
   reviewStatus: varchar('review_status', { length: 32 }).notNull().default('open'),

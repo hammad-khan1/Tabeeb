@@ -5,7 +5,7 @@ import { appUrl } from '@/lib/env';
 import { ApiError, notFound } from '@/lib/api-error';
 import { briefingShareLinks, documents } from '../../../drizzle/schema';
 import { generatePatientBriefing } from './briefing-generator';
-import type { PatientBriefingData } from './types';
+import type { AttributedMedication, PatientBriefingData } from './types';
 
 export interface CreateBriefingShareLinkOptions {
   title?: string;
@@ -30,7 +30,18 @@ export interface SharedBriefingData {
   viewCount: number;
   lastViewedAt: Date | null;
   includedSections: string[];
+  originalDocumentsAvailable?: boolean;
   briefing: PatientBriefingData;
+}
+
+export const BRIEFING_SECTIONS = [
+  'summary', 'conditions', 'doctors', 'medications', 'allergies', 'labs',
+  'trends', 'conflicts', 'questions', 'timeline', 'citations',
+] as const;
+
+/** A whole source file cannot enforce redaction of withheld clinical sections. */
+export function permitsOriginalDocuments(sections: string[] | null): boolean {
+  return !sections?.length || BRIEFING_SECTIONS.every((section) => sections.includes(section));
 }
 
 export function briefingShareUrlFor(token: string): string {
@@ -130,34 +141,97 @@ export async function getSharedBriefing(token: string): Promise<SharedBriefingDa
     to: link.dateRangeTo ? link.dateRangeTo.toISOString() : undefined,
   });
 
-  // Filter sections according to patient's specified permissions
-  const allowed = new Set(link.includedSections ?? []);
-  const hasFilter = allowed.size > 0;
-
-  const filteredBriefing: PatientBriefingData = {
-    ...rawBriefing,
-    clinicalSummary: hasFilter && !allowed.has('summary') ? 'Summary withheld by patient.' : rawBriefing.clinicalSummary,
-    conditions: hasFilter && !allowed.has('conditions') ? [] : rawBriefing.conditions,
-    doctors: hasFilter && !allowed.has('doctors') ? [] : rawBriefing.doctors,
-    currentMedications: hasFilter && !allowed.has('medications') ? [] : rawBriefing.currentMedications,
-    historicalMedications: hasFilter && !allowed.has('medications') ? [] : rawBriefing.historicalMedications,
-    allergies: hasFilter && !allowed.has('allergies') ? [] : rawBriefing.allergies,
-    recentLabResults: hasFilter && !allowed.has('labs') ? [] : rawBriefing.recentLabResults,
-    labTrends: hasFilter && !allowed.has('trends') ? [] : rawBriefing.labTrends,
-    treatmentConflicts: hasFilter && !allowed.has('conflicts') ? [] : rawBriefing.treatmentConflicts,
-    consultationQuestions: hasFilter && !allowed.has('questions') ? [] : rawBriefing.consultationQuestions,
-    doctorTimeline: hasFilter && !allowed.has('timeline') ? [] : rawBriefing.doctorTimeline,
-    citations: hasFilter && !allowed.has('citations') ? [] : rawBriefing.citations,
-  };
-
   return {
     title: link.title,
     expiresAt: link.expiresAt,
     viewCount: link.viewCount ?? 1,
     lastViewedAt: link.lastViewedAt,
     includedSections: link.includedSections ?? [],
-    briefing: filteredBriefing,
+    originalDocumentsAvailable: permitsOriginalDocuments(link.includedSections),
+    briefing: filterBriefingForShare(rawBriefing, link.includedSections),
   };
+}
+
+/** Keeps selected facts while withholding cross-section prose and source metadata. */
+export function filterBriefingForShare(
+  rawBriefing: PatientBriefingData, includedSections: string[] | null
+): PatientBriefingData {
+  // Filter sections according to patient's specified permissions
+  const allowed = new Set(includedSections ?? []);
+  const hasFilter = allowed.size > 0;
+  const fullClinicalDisclosure = permitsOriginalDocuments(includedSections);
+  if (fullClinicalDisclosure) return rawBriefing;
+  const medicationAllowed = !hasFilter || allowed.has('medications');
+  const allergyAllowed = !hasFilter || allowed.has('allergies');
+  const conflictAllowed = !hasFilter || allowed.has('conflicts');
+  const safety = rawBriefing.medicationSafety;
+  const sharedMedications = (rows: AttributedMedication[]) => !medicationAllowed ? [] : rows.map((row) => {
+    if (fullClinicalDisclosure) return row;
+    return {
+      ...row,
+      sourceDocumentTitle: 'Source metadata withheld',
+      sourceCitation: 'Source metadata withheld',
+      // Free-text instructions/corrections can repeat withheld clinical sections.
+      dosage: null, frequency: null, duration: null, route: null, patientCorrections: {},
+      changesNote: 'Instructions and patient corrections are withheld in this section-limited share.',
+      ...(!allowed.has('doctors') ? {
+        prescribingDoctor: {
+          ...row.prescribingDoctor, name: 'Prescriber withheld', specialty: null,
+          hospital: null, isIdentified: false,
+        },
+        hospital: null,
+      } : {}),
+    };
+  });
+
+  const filteredBriefing: PatientBriefingData = {
+    ...rawBriefing,
+    clinicalSummary: hasFilter && !allowed.has('summary') ? 'Summary withheld by patient.'
+      : fullClinicalDisclosure ? rawBriefing.clinicalSummary : 'This briefing contains only the sections selected by the patient. A complete clinical summary is withheld.',
+    conditions: hasFilter && !allowed.has('conditions') ? [] : rawBriefing.conditions.map((row) => ({
+      ...row,
+      sourceDocumentTitle: 'Source metadata withheld',
+      ...(!allowed.has('doctors') ? { diagnosingDoctor: null, hospital: null } : {}),
+    })),
+    doctors: hasFilter && !allowed.has('doctors') ? [] : rawBriefing.doctors.map((row) => ({
+      ...row, sourceDocumentTitle: null, notes: null,
+    })),
+    currentMedications: sharedMedications(rawBriefing.currentMedications),
+    historicalMedications: sharedMedications(rawBriefing.historicalMedications),
+    allergies: hasFilter && !allowed.has('allergies') ? [] : rawBriefing.allergies.map((row) => ({
+      ...row, sourceDocumentTitle: null,
+      // Reaction narratives can contain medicines/conditions outside the selected scope.
+      reaction: row.reaction ? 'Reaction narrative withheld in this section-limited share.' : null,
+    })),
+    recentLabResults: hasFilter && !allowed.has('labs') ? [] : rawBriefing.recentLabResults.map((row) => ({
+      ...row, sourceDocumentTitle: 'Source metadata withheld', sourceCitation: 'Source metadata withheld',
+      ...(!allowed.has('doctors') ? {
+        orderingDoctor: { name: 'Ordering clinician withheld', specialty: null, isIdentified: false },
+        performingFacility: null,
+      } : {}),
+    })),
+    labTrends: hasFilter && !allowed.has('trends') ? [] : rawBriefing.labTrends,
+    treatmentConflicts: !fullClinicalDisclosure ? [] : rawBriefing.treatmentConflicts,
+    // Free-text plans/questions/citations can repeat data from excluded sections.
+    consultationsAndPlans: fullClinicalDisclosure ? rawBriefing.consultationsAndPlans : [],
+    uncertainties: fullClinicalDisclosure ? rawBriefing.uncertainties : [],
+    consultationQuestions: fullClinicalDisclosure ? rawBriefing.consultationQuestions : [],
+    doctorTimeline: fullClinicalDisclosure ? rawBriefing.doctorTimeline : [],
+    citations: fullClinicalDisclosure ? rawBriefing.citations : [],
+    medicationSafety: !medicationAllowed || !safety ? null : {
+      ...safety,
+      findings: conflictAllowed ? safety.findings.filter((finding) =>
+        allergyAllowed || finding.category !== 'allergy_concern').map((finding) => fullClinicalDisclosure ? finding : ({
+          ...finding, userId: '', resolutionNotes: null,
+          explanation: 'A medication finding is recorded in the selected sources. Detailed source wording is withheld by section permissions; review it with a clinician who can access the complete records.',
+          evidence: finding.evidence.filter((evidence) => allergyAllowed || evidence.kind !== 'allergy_record')
+            .map((evidence) => ({ ...evidence, excerpt: null, documentTitle: null, documentDate: null })),
+        })) : [],
+      timeline: fullClinicalDisclosure ? safety.timeline : [],
+    },
+  };
+
+  return filteredBriefing;
 }
 
 export async function listBriefingShareLinks(userId: string) {

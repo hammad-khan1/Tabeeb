@@ -194,10 +194,6 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
       p.drawLine(leftMargin, 752, leftMargin + contentWidth, 752, COLORS.border, 0.5);
       p.currentY = 736;
 
-      // Repeat active table header if we split across pages
-      if (activeTableHeaderRenderer) {
-        activeTableHeaderRenderer();
-      }
     }
     return p;
   };
@@ -207,6 +203,8 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
   const ensureSpace = (height: number): PdfPageContext => {
     if (currentPage.availableHeight < height) {
       currentPage = startNewPage();
+      // The renderer closes over currentPage, so assign the new page first.
+      if (activeTableHeaderRenderer) activeTableHeaderRenderer();
     }
     return currentPage;
   };
@@ -297,72 +295,66 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
       currentPage.currentY -= 17;
     };
 
-    // Set active header renderer so new pages repeat this table's header
+    // Reserve the initial header before enabling repeated headers, avoiding a
+    // duplicate header if the table begins on a new page.
+    ensureSpace(38);
     activeTableHeaderRenderer = drawHeader;
-    ensureSpace(38); // Ensure space for header + first row
     drawHeader();
 
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
-
-      // 1. Calculate wrapped lines and height for each cell
-      const cellLinesList: { lines: string[]; subLines: string[]; fontSize: number; subFontSize: number }[] = [];
-      let maxCellHeight = 16;
-
-      for (let c = 0; c < columns.length; c++) {
-        const cell = row[c] || { text: '' };
-        const colWidth = columns[c].width;
+      const cells = columns.map((column, index) => {
+        const cell = row[index] || { text: '' };
         const fontSize = cell.fontSize || 8;
         const subFontSize = cell.subFontSize || 7;
-
-        const lines = wrapCellText(cell.text, colWidth, fontSize, cell.font === 'F2');
-        const subLines = cell.subText ? wrapCellText(cell.subText, colWidth, subFontSize, cell.subFont === 'F2') : [];
-
-        const lineHeight = fontSize + 2.5;
-        const subLineHeight = subFontSize + 2;
-        const cellH = lines.length * lineHeight + (subLines.length ? subLines.length * subLineHeight + 2 : 0) + 8; // 4pt top & bottom padding
-
-        if (cellH > maxCellHeight) {
-          maxCellHeight = cellH;
-        }
-        cellLinesList.push({ lines, subLines, fontSize, subFontSize });
-      }
-
-      // 2. Ensure page space for this row
-      ensureSpace(maxCellHeight);
-
-      // 3. Draw row background and border
-      const bg = r % 2 === 0 ? COLORS.white : COLORS.lightBg;
-      currentPage.drawRect(leftMargin, currentPage.currentY - maxCellHeight, contentWidth, maxCellHeight, bg, COLORS.border, 0.35);
-
-      // 4. Render cell contents
-      let colX = leftMargin;
-      for (let c = 0; c < columns.length; c++) {
-        const cell = row[c] || { text: '' };
-        const colWidth = columns[c].width;
-        const { lines, subLines, fontSize, subFontSize } = cellLinesList[c];
-
-        let textY = currentPage.currentY - 4 - fontSize; // 4pt padding from top
-
-        // Main text lines
-        for (const line of lines) {
-          currentPage.drawText(line, colX + 6, textY, cell.font || 'F1', fontSize, cell.color || COLORS.darkText);
-          textY -= fontSize + 2.5;
-        }
-
-        // Subtitle / Generic lines
-        if (subLines.length > 0) {
-          textY -= 1;
-          for (const sLine of subLines) {
-            currentPage.drawText(sLine, colX + 6, textY, cell.subFont || 'F3', subFontSize, cell.subColor || COLORS.mutedText);
-            textY -= subFontSize + 2;
+        return [
+          ...wrapCellText(cell.text, column.width, fontSize, cell.font === 'F2').map((text) => ({
+            text, size: fontSize, height: fontSize + 2.5, gap: 0,
+            font: cell.font || 'F1' as const, color: cell.color || COLORS.darkText,
+          })),
+          ...wrapCellText(cell.subText || '', column.width, subFontSize, cell.subFont === 'F2').map((text, line) => ({
+            text, size: subFontSize, height: subFontSize + 2 + (line === 0 ? 1 : 0), gap: line === 0 ? 1 : 0,
+            font: cell.subFont || 'F3' as const, color: cell.subColor || COLORS.mutedText,
+          })),
+        ];
+      });
+      const offsets = cells.map(() => 0);
+      const totalHeight = Math.max(16, 8 + Math.max(...cells.map((lines) => lines.reduce((sum, line) => sum + line.height, 0))));
+      // Keep ordinary rows together. A taller-than-page row is split by its actual
+      // wrapped lines, retaining every line and repeating headers on continuation pages.
+      if (totalHeight <= 675) ensureSpace(totalHeight);
+      let remaining = true;
+      while (remaining) {
+        ensureSpace(32);
+        const available = currentPage.availableHeight - 8;
+        const chunks = cells.map((lines, column) => {
+          const selected = [] as typeof lines;
+          let height = 0;
+          while (offsets[column] < lines.length) {
+            const line = lines[offsets[column]];
+            if (height + line.height > available) break;
+            selected.push(line);
+            offsets[column]++;
+            height += line.height;
           }
+          return { lines: selected, height };
+        });
+        const chunkHeight = Math.max(16, 8 + Math.max(...chunks.map((chunk) => chunk.height)));
+        currentPage.drawRect(leftMargin, currentPage.currentY - chunkHeight, contentWidth, chunkHeight,
+          r % 2 === 0 ? COLORS.white : COLORS.lightBg, COLORS.border, 0.35);
+        let colX = leftMargin;
+        for (let column = 0; column < columns.length; column++) {
+          let top = currentPage.currentY - 4;
+          for (const line of chunks[column].lines) {
+            currentPage.drawText(line.text, colX + 6, top - line.gap - line.size, line.font, line.size, line.color);
+            top -= line.height;
+          }
+          colX += columns[column].width;
         }
-
-        colX += colWidth;
+        currentPage.currentY -= chunkHeight;
+        remaining = cells.some((lines, column) => offsets[column] < lines.length);
+        if (remaining) ensureSpace(Number.POSITIVE_INFINITY);
       }
-
-      currentPage.currentY -= maxCellHeight;
     }
 
     // Clear active table header after table finishes
@@ -481,7 +473,7 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
   // =========================================================================
   // Section 4: Current Medications & Prescribing Attribution
   // =========================================================================
-  drawSectionHeading('Current Medications & Prescribing Attribution', briefing.currentMedications.length);
+  drawSectionHeading('Medication Records & Current-Use Verification', briefing.currentMedications.length);
   const medColumns: TableColumnDef[] = [
     { header: 'MEDICATION & GENERIC', width: 142 },
     { header: 'DOSAGE & SCHEDULE', width: 125 },
@@ -489,7 +481,7 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
     { header: 'CITATION', width: 100 },
   ];
   const medRows: TableCellContent[][] = briefing.currentMedications.map((med) => {
-    const dosageStr = [med.dosage, med.frequency, med.route].filter(Boolean).join(', ') || 'As directed';
+    const dosageStr = [med.dosage, med.frequency, med.route].filter(Boolean).join(', ') || 'Instructions not documented';
     const citeBadge = med.citationIndex ? `[${med.citationIndex}]` : '[*]';
     const docName = med.prescribingDoctor.name || 'Unattributed Prescriber';
     const docSpec = med.prescribingDoctor.specialty || med.hospital || null;
@@ -497,13 +489,16 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
     return [
       {
         text: med.name,
-        subText: med.genericName ? `(${med.genericName})` : undefined,
+        subText: [med.genericName, med.useStatus?.replaceAll('_', ' ')].filter(Boolean).join(' | '),
         font: 'F2',
         fontSize: 8,
         color: COLORS.navy,
       },
       {
         text: dosageStr,
+        subText: med.patientCorrections && Object.keys(med.patientCorrections).length
+          ? `Patient corrections: ${Object.entries(med.patientCorrections).map(([key, value]) => `${key}: ${value ?? 'not known'}`).join('; ')}`
+          : med.changesNote ?? undefined,
         font: 'F1',
         fontSize: 7.5,
         color: COLORS.darkText,
@@ -524,7 +519,45 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
       },
     ];
   });
-  renderTable(medColumns, medRows, 'No active medications documented in available records.');
+  renderTable(medColumns, medRows, 'No medication records awaiting current-use verification.');
+
+  if (briefing.medicationSafety) {
+    const safety = briefing.medicationSafety;
+    drawSectionHeading('Medication Safety & Reconciliation', safety.findings.length);
+    renderTable([
+      { header: 'COVERAGE', width: 142 },
+      { header: 'PROVIDER & LIMITATIONS', width: 390 },
+    ], [[
+      { text: `Drug interactions: ${safety.interactionCoverage.status}`, font: 'F2', fontSize: 8 },
+      { text: `${safety.interactionCoverage.provider}. ${[...safety.interactionCoverage.limitations, ...safety.limitations].join(' ')}`, fontSize: 8 },
+    ]], '');
+    renderTable([
+      { header: 'FINDING / CERTAINTY', width: 142 },
+      { header: 'EVIDENCE & REVIEW', width: 290 },
+      { header: 'SOURCE', width: 100 },
+    ], safety.findings.map((finding) => [
+      { text: finding.title, subText: `${finding.certainty}${finding.severity ? `; provider severity: ${finding.severity}` : ''}`, font: 'F2', fontSize: 8 },
+      { text: finding.explanation, subText: `${finding.reviewStatus.replaceAll('_', ' ')}${finding.knowledgeSource ? ` | ${finding.knowledgeSource.provider} ${finding.knowledgeSource.version ?? '(version unavailable)'}` : ''}`, fontSize: 8 },
+      { text: finding.evidence.map((evidence) => {
+        const citation = briefing.citations.find((item) => item.documentId === evidence.documentId);
+        return citation ? `[${citation.index}]` : evidence.kind === 'patient' ? 'Patient report' : 'Source record';
+      }).join(', '), fontSize: 8 },
+    ]), 'No findings within the supported checks. Unavailable checks do not establish medication safety.');
+    const changes = safety.timeline.filter((event) =>
+      !['first_documented', 'new_prescription'].includes(event.type));
+    if (changes.length) {
+      drawSectionHeading('Documented Medication Changes', changes.length);
+      renderTable([
+        { header: 'DOCUMENT DATE', width: 100 },
+        { header: 'CHANGE / CONFIRMATION', width: 142 },
+        { header: 'DETAIL', width: 290 },
+      ], changes.map((event) => [
+        { text: event.date ?? 'Date unknown', fontSize: 8 },
+        { text: event.title, subText: event.confirmation.replaceAll('_', ' '), fontSize: 8 },
+        { text: event.description, fontSize: 8 },
+      ]), '');
+    }
+  }
 
   // =========================================================================
   // Section 5: Historical & Discontinued Medications
@@ -770,7 +803,7 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
     const planRows: TableCellContent[][] = briefing.consultationsAndPlans.map((cp) => [
       {
         text: cp.doctorName,
-        subText: cp.date ? new Date(cp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : undefined,
+        subText: cp.date ? new Date(cp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date unknown',
         font: 'F2',
         fontSize: 8,
         color: COLORS.navy,
@@ -859,7 +892,7 @@ export function generateBriefingPdf(briefing: PatientBriefingData): Buffer {
       { header: 'ATTENDING DOCTOR / FACILITY', width: 180 },
     ];
     const timeRows: TableCellContent[][] = briefing.doctorTimeline.slice(0, 15).map((ev) => {
-      const d = new Date(ev.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const d = ev.date ? new Date(ev.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date unknown';
       const doctorDisplay = ev.doctorName.toLowerCase().startsWith('dr') ? ev.doctorName : `Dr. ${ev.doctorName}`;
 
       return [

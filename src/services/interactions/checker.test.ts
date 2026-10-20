@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DrugConcept } from './rxnav-client';
+import type { MedicationObservation } from '../medications/types';
 
 /**
  * Safety regression guards for the interaction checker.
  *
- * Two of these encode bugs found by running the real thing against live RxNav data:
- *
- *  - a patient allergic to penicillin asking about amoxicillin got NO warning, because
- *    the match only compared names and ingredients and "amoxicillin" is neither
- *  - amoxicillin and omeprazole were reported as "the same drug class", because
+ * Class resemblance must not be reported as a verified allergy relationship.
+ * Amoxicillin and omeprazole were previously reported as "the same drug class", because
  *    RxClass returns a class for every combination product a drug appears in and both
  *    carry A02BD "Combinations for eradication of Helicobacter pylori"
  *
@@ -60,16 +58,19 @@ const concepts: Record<string, DrugConcept> = {
   },
 };
 
+const resolvedInputs: Array<Array<string | { name: string; rxcui?: string | null }>> = [];
 vi.mock('./rxnav-client', () => ({
   // Accepts both shapes: current medications are now passed as { name, rxcui } so the
   // stored RxNorm id can skip a network lookup, while queried items stay plain names.
-  resolveDrugConcepts: (input: Array<string | { name: string; rxcui?: string | null }>) =>
-    Promise.resolve(
+  resolveDrugConcepts: (input: Array<string | { name: string; rxcui?: string | null }>) => {
+    resolvedInputs.push(input);
+    return Promise.resolve(
       input.map((item) => {
         const name = typeof item === 'string' ? item : item.name;
         return concepts[name] ?? { query: name, rxcui: null, ingredients: [], classes: [] };
       })
-    ),
+    );
+  },
 }));
 
 let queriedDrugs: string[] = [];
@@ -102,7 +103,10 @@ const PROFILE = {
   medications: [
     { name: 'Metformin', genericName: 'Metformin', dosage: '850mg', frequency: 'BD', rxnormId: '6809', isActive: true },
     { name: 'Amlodipine', genericName: 'Amlodipine', dosage: '5mg', frequency: 'OD', rxnormId: '17767', isActive: true },
-  ],
+  ] as Array<{
+    name: string; genericName: string; dosage: string; frequency: string; rxnormId: string;
+    isActive: boolean; sourceActive?: boolean; patientStatus?: string; observation?: MedicationObservation;
+  }>,
   allergies: [{ allergen: 'Penicillin', severity: null, reaction: 'rash' }],
 };
 
@@ -131,6 +135,12 @@ const { checkInteractions } = await import('./checker');
 beforeEach(() => {
   queriedDrugs = [];
   inserted.length = 0;
+  resolvedInputs.length = 0;
+  for (const record of PROFILE.medications) {
+    delete record.sourceActive;
+    delete record.patientStatus;
+    delete record.observation;
+  }
 });
 
 async function check(drugs: string[]) {
@@ -139,15 +149,12 @@ async function check(drugs: string[]) {
 }
 
 describe('allergy detection', () => {
-  it('flags a drug in the allergen class, not just the allergen itself', async () => {
-    // The dangerous miss: amoxicillin neither contains nor equals "penicillin", but
-    // its ATC class is "Penicillins with extended spectrum".
+  it('does not turn class resemblance into verified allergy cross-reactivity', async () => {
     const r = await check(['amoxicillin']);
     const allergy = r.interactions.filter((i) => i.source === 'allergy_record');
 
-    expect(allergy).toHaveLength(1);
-    expect(allergy[0].severity).toBe('severe');
-    expect(allergy[0].description).toMatch(/Penicillins with extended spectrum/);
+    expect(allergy).toHaveLength(0);
+    expect(r.limitations.join(' ')).toContain('cross-reactivity is not assessed');
   });
 
   it('flags the allergen itself', async () => {
@@ -177,7 +184,8 @@ describe('duplicate therapy detection', () => {
 
     expect(cls).toHaveLength(1);
     expect(cls[0].items).toEqual(['nifedipine', 'Amlodipine']);
-    expect(cls[0].severity).toBe('mild');
+    expect(cls[0].severity).toBe('info');
+    expect(cls[0].description).toContain('not evidence of a harmful');
   });
 
   it('does not report a class match on top of an ingredient match', async () => {
@@ -205,8 +213,22 @@ describe('honesty about what was checked', () => {
     expect(r.limitations.join(' ')).toMatch(/drug–drug/i);
   });
 
-  it('records the highest severity found', async () => {
-    await check(['amoxicillin']);
-    expect(inserted[0]).toMatchObject({ severity: 'severe' });
+  it('stores record findings as informational without invented clinical severity', async () => {
+    await check(['penicillin']);
+    expect(inserted[0]).toMatchObject({ severity: 'info' });
+  });
+
+  it('does not trust legacy model-supplied identifiers', async () => {
+    await check(['Glucophage']);
+    const query = resolvedInputs.flat().find((item) => typeof item !== 'string' && item.name === 'Metformin');
+    expect(query).toEqual({ name: 'Metformin', rxcui: null });
+  });
+
+  it('excludes archived and patient-reported historical medicines', async () => {
+    PROFILE.medications[0].sourceActive = false;
+    expect((await check(['Glucophage'])).interactions).toHaveLength(0);
+    PROFILE.medications[0].sourceActive = true;
+    PROFILE.medications[0].patientStatus = 'historical';
+    expect((await check(['Glucophage'])).interactions).toHaveLength(0);
   });
 });

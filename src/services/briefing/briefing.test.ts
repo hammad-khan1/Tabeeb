@@ -584,7 +584,7 @@ describe('PDF Briefing Generator', () => {
     // All sections should have dynamic section headers
     expect(pdfContent).toContain('1. EXECUTIVE CLINICAL SUMMARY');
     expect(pdfContent).toContain('ATTENDING DOCTORS & CARE TEAM');
-    expect(pdfContent).toContain('CURRENT MEDICATIONS & PRESCRIBING ATTRIBUTION');
+    expect(pdfContent.includes('MEDICATION RECORDS & CURRENT-USE VERIFICATION')).toBe(true);
     expect(pdfContent).toContain('RECENT LABORATORY RESULTS');
     expect(pdfContent).toContain('LABORATORY TEST RESULTS & LONGITUDINAL TRENDS');
     expect(pdfContent).toContain('CONSULTATION SUMMARIES & CARE PLANS');

@@ -19,11 +19,23 @@ export function assertMedicationScope(userId: string, records: MedicationRecord[
   if (records.some((record) => record.userId !== userId)) throw new Error('Medication patient scope mismatch.');
 }
 
+export function hasDocumentedStopInstruction(name: string, source: string): boolean {
+  const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped) return false;
+  const stopBefore = new RegExp(`\\b(?:stop|stopped|discontinue|discontinued)\\s+(?:taking\\s+)?${escaped}(?:\\b|$)`, 'i');
+  const stopAfter = new RegExp(`${escaped}(?:\\s+\\d+(?:\\.\\d+)?\\s*(?:mg|g|ml|mcg))?\\s*(?::|[-–])?\\s*(?:is\\s+|was\\s+)?(?:stopped|discontinued)\\b`, 'i');
+  return source.split(/[;\n.]/).some((clause) =>
+    !/\b(?:if|when|unless|after|until|tomorrow|next|not|never|don't|consider|may|might|avoid)\b/i.test(clause) &&
+    (stopBefore.test(clause) || stopAfter.test(clause))
+  );
+}
+
 export function hasExplicitStop(record: MedicationRecord): boolean {
   if (!record.observation.explicitStop) return false;
-  const source = `${record.observation.instructions ?? ''} ${record.observation.excerpt ?? ''}`;
-  return /\b(?:stop|stopped|discontinue|discontinued|ceased)\b/i.test(source) &&
-    !/\b(?:not|never|don't)\s+(?:stop|discontinue)\b/i.test(source);
+  return hasDocumentedStopInstruction(
+    record.observation.originalName ?? record.name,
+    [record.observation.instructions, record.observation.excerpt].filter(Boolean).join('\n')
+  );
 }
 
 export function medicationStatus(record: MedicationRecord): MedicationStatus {
@@ -61,10 +73,14 @@ export function exactSourceDate(value: string | null): number | null {
   return Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0, 10) === day ? stamp : null;
 }
 
+export function medicationSourceDate(record: MedicationRecord): string | null {
+  return record.observation.prescribedDateText ?? record.documentDate;
+}
+
 function chronological(records: MedicationRecord[]): MedicationRecord[] {
   return [...records].sort((a, b) => {
-    const first = exactSourceDate(a.documentDate);
-    const second = exactSourceDate(b.documentDate);
+    const first = exactSourceDate(medicationSourceDate(a));
+    const second = exactSourceDate(medicationSourceDate(b));
     if (first !== null && second !== null && first !== second) return first - second;
     if (first === null && second !== null) return 1;
     if (second === null && first !== null) return -1;
@@ -72,10 +88,13 @@ function chronological(records: MedicationRecord[]): MedicationRecord[] {
   });
 }
 
-const FIELDS = ['dosage', 'strength', 'frequency', 'duration', 'route', 'form', 'instructions'] as const;
+const FIELDS = ['dosage', 'doseAmount', 'strength', 'frequency', 'duration', 'route', 'form', 'instructions'] as const;
+export function medicationFieldLabel(field: ReconciliationDifference['field']): string {
+  return field === 'doseAmount' ? 'dose amount' : field;
+}
 function documentedField(record: MedicationRecord, field: (typeof FIELDS)[number]): string | null {
   if (field === 'strength') return [record.observation.strength, record.observation.unit].filter(Boolean).join(' ') || null;
-  if (field === 'form' || field === 'instructions') return record.observation[field] ?? null;
+  if (field === 'form' || field === 'instructions' || field === 'doseAmount') return record.observation[field] ?? null;
   return record[field];
 }
 
@@ -90,7 +109,7 @@ export function medicationDifferences(first: MedicationRecord, second: Medicatio
       id: stableMedicationId('difference', [first.userId, first.id, second.id, field, before, after]),
       medicationIds: [first.id, second.id] as [string, string],
       field, before, after,
-      explanation: `The sources document different ${field} values. These may describe separate treatment episodes; neither source is automatically preferred.`,
+      explanation: `The sources document different ${medicationFieldLabel(field)} values. These may describe separate treatment episodes; neither source is automatically preferred.`,
       evidence: [medicationEvidence(first), medicationEvidence(second)],
     }];
   });
@@ -138,15 +157,15 @@ export function buildMedicationTimeline(userId: string, records: MedicationRecor
       timeline.push({
         id: stableMedicationId('event', [userId, type, record.id, description]),
         userId, type, medicationIds: linked.flatMap((item) => item.medicationId ? [item.medicationId] : []),
-        date: record.documentDate, title, description, confirmation, evidence: linked,
+        date: medicationSourceDate(record), title, description, confirmation, evidence: linked,
       });
     };
     push(prior ? 'new_prescription' : 'first_documented', record.name,
       prior ? 'Another source documents this medication. Current use remains separately confirmed.'
-        : 'First source in this history to document this medication; this is not an inferred treatment start date.');
+        : 'First represented source for this identity in this view; the treatment start date is not inferred.');
     if (hasExplicitStop(record)) push('explicit_discontinuation', `Documented stop: ${record.name}`,
       record.observation.instructions ?? record.observation.excerpt ?? 'The source explicitly documents discontinuation.');
-    if (record.observation.explicitReplacement && record.observation.excerpt &&
+    if (record.observation.status === 'changed' && record.observation.explicitReplacement && record.observation.excerpt &&
         /\b(?:replace|replaced|switch|switched)\b/i.test(record.observation.excerpt)) {
       push('replacement', `Documented replacement: ${record.name}`,
         `Source records a replacement involving ${record.observation.explicitReplacement}. Verify the original instructions.`);
@@ -155,17 +174,17 @@ export function buildMedicationTimeline(userId: string, records: MedicationRecor
       for (const difference of medicationDifferences(prior, record)) {
         const type: MedicationTimelineEvent['type'] =
           difference.field === 'instructions' ? 'reconciliation_conflict' :
-          difference.field === 'dosage' ? 'dose_change' :
+          difference.field === 'dosage' || difference.field === 'doseAmount' ? 'dose_change' :
           `${difference.field}_change` as MedicationTimelineEvent['type'];
-        push(type, `${record.name}: documented ${difference.field} difference`,
-          `${difference.before} → ${difference.after}. ${difference.explanation}`,
+        push(type, `${record.name}: documented ${medicationFieldLabel(difference.field)} difference`,
+          `One source records ${difference.before}; the other records ${difference.after}. ${difference.explanation}`,
           'needs_verification', difference.evidence);
       }
     }
     if (record.patientStatus) {
       timeline.push({
         id: stableMedicationId('event', [userId, 'patient_confirmation', record.id, record.patientStatus]),
-        userId, type: 'patient_confirmation', medicationIds: [record.id], date: record.updatedAt ?? null,
+        userId, type: 'patient_confirmation', medicationIds: [record.id], date: record.patientUpdatedAt ?? null,
         title: `${record.name}: patient status update`,
         description: `Patient-reported status: ${record.patientStatus.replaceAll('_', ' ')}. This does not change the source document.`,
         confirmation: 'patient_reported', evidence: [{ ...medicationEvidence(record), kind: 'patient', excerpt: null }],
@@ -174,7 +193,7 @@ export function buildMedicationTimeline(userId: string, records: MedicationRecor
     if (Object.keys(record.corrections).length) {
       timeline.push({
         id: stableMedicationId('event', [userId, 'patient_correction', record.id, record.corrections]),
-        userId, type: 'patient_correction', medicationIds: [record.id], date: record.updatedAt ?? null,
+        userId, type: 'patient_correction', medicationIds: [record.id], date: record.patientUpdatedAt ?? null,
         title: `${record.name}: patient correction`,
         description: 'Patient-entered corrections are recorded separately from the original documented instructions.',
         confirmation: 'patient_reported', evidence: [{ ...medicationEvidence(record), kind: 'patient', excerpt: null }],

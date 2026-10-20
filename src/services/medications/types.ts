@@ -29,9 +29,12 @@ export interface MedicationObservation {
   form?: string | null;
   doseAmount?: string | null;
   startDate?: string | null;
+  prescribedDateText?: string | null;
   endDate?: string | null;
   prescriber?: string | null;
   sourcePage?: number | null;
+  /** Digest of complete extracted source text; never derived from drug names alone. */
+  sourceFingerprint?: string | null;
   excerpt?: string | null;
   instructions?: string | null;
   confidence?: 'documented' | 'uncertain' | 'unverified';
@@ -55,6 +58,8 @@ export interface MedicationCorrections {
 
 export interface MedicationRecord {
   id: string;
+  /** Computed by the server; extraction and patient payloads cannot set this. */
+  effectiveStatus?: MedicationStatus;
   userId: string;
   documentId: string | null;
   documentTitle: string | null;
@@ -62,6 +67,7 @@ export interface MedicationRecord {
   documentDate: string | null;
   createdAt: string;
   updatedAt?: string;
+  patientUpdatedAt?: string | null;
   name: string;
   genericName: string | null;
   dosage: string | null;
@@ -169,7 +175,7 @@ export interface MedicationTimelineEvent {
 export interface ReconciliationDifference {
   id: string;
   medicationIds: [string, string];
-  field: 'dosage' | 'strength' | 'frequency' | 'duration' | 'route' | 'form' | 'instructions' | 'identity';
+  field: 'dosage' | 'doseAmount' | 'strength' | 'frequency' | 'duration' | 'route' | 'form' | 'instructions' | 'identity';
   before: string | null;
   after: string | null;
   explanation: string;

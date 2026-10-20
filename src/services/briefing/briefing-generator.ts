@@ -31,29 +31,10 @@ import {
   findPageNumber,
 } from './doctor-tracker';
 
-/**
- * Common medication class mapping for duplicate therapy detection
- */
-const DRUG_CLASSES: Record<string, string[]> = {
-  NSAID: ['ibuprofen', 'brufen', 'naproxen', 'diclofenac', 'voltral', 'celecoxib', 'meloxicam', 'aspirin', 'disprin'],
-  ACE_INHIBITOR: ['lisinopril', 'enalapril', 'captopril', 'ramipril', 'tritace'],
-  ARB: ['losartan', 'cozaar', 'valsartan', 'diovan', 'telmisartan', 'micardis', 'candesartan'],
-  STATIN: ['atorvastatin', 'lipitor', 'rosuvastatin', 'crestor', 'simvastatin', 'zocor'],
-  PPI: ['omeprazole', 'risek', 'esomeprazole', 'nexum', 'pantoprazole', 'controloc'],
-  BENZODIAZEPINE: ['alprazolam', 'xanax', 'lorazepam', 'ativan', 'diazepam', 'valium', 'clonazepam', 'rivotril'],
-  SULFONYLUREA: ['glimepiride', 'amaryl', 'gliclazide', 'diamicron', 'glipizide'],
-  BLOOD_THINNER: ['warfarin', 'coumadin', 'clopidogrel', 'plavix', 'rivaroxaban', 'xarelto', 'apixaban', 'eliquis'],
-};
-
-function identifyDrugClass(drugName: string): string | null {
-  const lower = drugName.toLowerCase();
-  for (const [className, drugs] of Object.entries(DRUG_CLASSES)) {
-    if (drugs.some((d) => lower.includes(d))) {
-      return className;
-    }
-  }
-  return null;
-}
+import { applyMedicationFindingReviews, medicationRecordFromRow } from '@/services/medications/repository';
+import { evaluateMedicationSafety } from '@/services/medications/safety';
+import { medicationStatus } from '@/services/medications/reconciliation';
+import { isCurrentMedicationStatus } from '@/services/medications/workspace';
 
 export async function generatePatientBriefing(
   userId: string,
@@ -70,7 +51,7 @@ export async function generatePatientBriefing(
 
   const fromDate = options.from ? new Date(options.from) : null;
   const toDate = options.to ? new Date(options.to) : null;
-  const scopedDocIds = options.documentIds && options.documentIds.length > 0 ? options.documentIds : null;
+  const scopedDocIds = options.documentIds ?? null;
 
   // Build document filter
   const docConditions: SQL[] = [eq(documents.userId, userId)];
@@ -136,9 +117,9 @@ export async function generatePatientBriefing(
     db
       .select()
       .from(medications)
-      .where(and(eq(medications.userId, userId), scopeByDoc(medications.documentId)))
+      .where(and(eq(medications.userId, userId), eq(medications.sourceActive, true), scopeByDoc(medications.documentId)))
       .orderBy(desc(medications.prescribedDate), desc(medications.createdAt))
-      .limit(100),
+      .limit(500),
     db
       .select()
       .from(diagnoses)
@@ -159,17 +140,45 @@ export async function generatePatientBriefing(
     db
       .select()
       .from(patientDoctors)
-      .where(eq(patientDoctors.userId, userId))
+      .where(and(eq(patientDoctors.userId, userId), scopedDocIds || options.from || options.to ? inArray(patientDoctors.sourceDocumentId, docIdList) : undefined))
       .limit(50),
   ]);
 
   // 4. Build Doctors Directory & Attribution
   const doctorProfiles = buildDoctorProfiles(docs, pDoctors);
 
-  // 5. Attributed Medications
-  const allMedications = medRows.map((m) => attributePrescription(m, docMap.get(m.documentId)));
-  const currentMedications = allMedications.filter((m) => m.status === 'active');
-  const historicalMedications = allMedications.filter((m) => m.status !== 'active');
+  // Medication history and findings share the dashboard domain rules. Only selected
+  // documents are evaluated so a scoped share cannot include withheld evidence.
+  const medicationRecords = medRows.map((row) => {
+    const doc = docMap.get(row.documentId);
+    return medicationRecordFromRow(row, {
+      id: doc?.id ?? row.documentId ?? '',
+      title: doc?.title ?? 'Medical Document',
+      documentType: doc?.documentType ?? 'prescription',
+      documentDate: doc?.documentDate ? (doc.documentDate instanceof Date ? doc.documentDate.toISOString() : new Date(doc.documentDate).toISOString()) : null,
+    });
+  });
+  const medicationSafety = await evaluateMedicationSafety(userId, medicationRecords, allergyRows.map((row) => ({
+    id: row.id, userId, documentId: row.documentId,
+    documentTitle: row.documentId ? docMap.get(row.documentId)?.title ?? null : null,
+    allergen: row.allergen, reaction: row.reaction, severity: row.severity, assertionStatus: row.assertionStatus,
+  })));
+  medicationSafety.findings = await applyMedicationFindingReviews(userId, medicationSafety.findings);
+  medicationSafety.limitations.push('This briefing evaluates only the displayed source records and their documented allergies. Patient-profile allergies and withheld records are outside this scope.');
+  if (medRows.length === 500) medicationSafety.limitations.push('The medication section is capped at 500 source observations; older records may be excluded.');
+  const allMedications = medRows.map((row, index) => {
+    const record = medicationRecords[index];
+    const status = medicationStatus(record);
+    return {
+      ...attributePrescription(row, docMap.get(row.documentId)),
+      status: (isCurrentMedicationStatus(status) ? 'active' : status === 'discontinued' ? 'discontinued' : 'historical') as 'active' | 'historical' | 'discontinued',
+      useStatus: status,
+      patientCorrections: record.corrections,
+      changesNote: record.patientStatus ? 'Status reported by patient; original prescription values retained.' : 'Current use has not been confirmed by the patient.',
+    };
+  });
+  const currentMedications = allMedications.filter((med) => isCurrentMedicationStatus(med.useStatus));
+  const historicalMedications = allMedications.filter((med) => !isCurrentMedicationStatus(med.useStatus));
 
   // 6. Attributed Lab Results
   const attributedLabs = labRows.map((l) => attributeLabResult(l, docMap.get(l.documentId)));
@@ -244,59 +253,9 @@ export async function generatePatientBriefing(
     });
   }
 
-  // 8. Identify Multiple Doctors & Treatment Conflicts
+  // Legacy hardcoded class/interaction claims are replaced by evidence-backed
+  // medicationSafety findings. No locally invented class or severity remains.
   const treatmentConflicts: TreatmentConflict[] = [];
-
-  // A: Duplicate therapeutic class conflicts across different prescribing doctors
-  const classMap = new Map<string, typeof currentMedications>();
-  for (const med of currentMedications) {
-    const drugClass = identifyDrugClass(med.name) || (med.genericName ? identifyDrugClass(med.genericName) : null);
-    if (drugClass) {
-      if (!classMap.has(drugClass)) classMap.set(drugClass, []);
-      classMap.get(drugClass)!.push(med);
-    }
-  }
-
-  for (const [drugClass, medsInClass] of classMap.entries()) {
-    if (medsInClass.length > 1) {
-      const distinctDoctors = Array.from(new Set(medsInClass.map((m) => m.prescribingDoctor.name)));
-      const medNames = medsInClass.map((m) => m.name).join(' and ');
-      treatmentConflicts.push({
-        id: `conflict-dup-${drugClass.toLowerCase()}`,
-        type: 'duplicate_therapy',
-        severity: drugClass === 'NSAID' || drugClass === 'BLOOD_THINNER' ? 'high' : 'moderate',
-        title: `Potential Duplicate Therapy: Multiple ${drugClass} Medications`,
-        description: `Patient is concurrently prescribed ${medNames} across records${
-          distinctDoctors.length > 1 ? ` by different doctors (${distinctDoctors.join(', ')})` : ''
-        }. Concomitant therapy in this class carries cumulative risk.`,
-        involvedDoctors: distinctDoctors,
-        involvedMedications: medsInClass.map((m) => m.name),
-        sourceCitations: medsInClass.map((m) => m.sourceCitation),
-        sourceDocumentIds: Array.from(new Set(medsInClass.map((m) => m.sourceDocumentId).filter(Boolean))),
-        recommendation: `Clarify with ${distinctDoctors.join(' or ')} whether both medications should be continued or if one was intended to replace the other.`,
-      });
-    }
-  }
-
-  // B: Flag overlapping blood thinners / NSAIDs
-  const hasBloodThinner = currentMedications.some((m) => identifyDrugClass(m.name) === 'BLOOD_THINNER');
-  const hasNsaid = currentMedications.some((m) => identifyDrugClass(m.name) === 'NSAID');
-  if (hasBloodThinner && hasNsaid) {
-    const thinners = currentMedications.filter((m) => identifyDrugClass(m.name) === 'BLOOD_THINNER');
-    const nsaids = currentMedications.filter((m) => identifyDrugClass(m.name) === 'NSAID');
-    treatmentConflicts.push({
-      id: 'conflict-interaction-anticoag-nsaid',
-      type: 'drug_interaction',
-      severity: 'high',
-      title: 'High Risk Combination: Anticoagulant/Antiplatelet + NSAID',
-      description: `Active records include blood thinner (${thinners.map((m) => m.name).join(', ')}) alongside NSAID (${nsaids.map((m) => m.name).join(', ')}). This significantly elevates gastrointestinal bleeding risk.`,
-      involvedDoctors: Array.from(new Set([...thinners, ...nsaids].map((m) => m.prescribingDoctor.name))),
-      involvedMedications: [...thinners, ...nsaids].map((m) => m.name),
-      sourceCitations: [...thinners, ...nsaids].map((m) => m.sourceCitation),
-      sourceDocumentIds: Array.from(new Set([...thinners, ...nsaids].map((m) => m.sourceDocumentId).filter(Boolean))),
-      recommendation: 'Urgent review recommended: verify if NSAID is actively being taken and discuss gastroprotection or alternative analgesia.',
-    });
-  }
 
   // 9. Document Uncertainties & Missing Information
   const uncertainties: BriefingUncertainty[] = [];
@@ -305,7 +264,7 @@ export async function generatePatientBriefing(
       uncertainties.push({
         category: 'unclear_instructions',
         detail: `Medication "${med.name}" does not specify complete dosage or frequency instructions.`,
-        impact: 'Risk of subtherapeutic dosing or unintentional overconsumption.',
+        impact: 'Documentation needs verification with the source and prescribing clinician.',
       });
     }
     if (!med.prescribingDoctor.isIdentified) {
@@ -376,7 +335,7 @@ export async function generatePatientBriefing(
   const doctorTimeline: DoctorTimelineEvent[] = [];
 
   for (const doc of docs) {
-    const dateStr = (doc.documentDate ?? doc.createdAt ?? new Date()).toISOString();
+    const dateStr = doc.documentDate?.toISOString() ?? null;
     const docDoctor = doc.doctorName || 'Doctor not identified in available records';
     const spec = detectSpecialty([doc.rawExtractedText, doc.hospital, doc.title].filter(Boolean).join(' '));
     const docPage = findPageNumber(doc.rawExtractedText);
@@ -430,7 +389,9 @@ export async function generatePatientBriefing(
   }
 
   // Sort timeline newest first
-  doctorTimeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  doctorTimeline.sort((a, b) =>
+    (b.date ? new Date(b.date).getTime() : -Infinity) -
+    (a.date ? new Date(a.date).getTime() : -Infinity));
 
   // 12. Evidence Citations
   const citations: EvidenceCitation[] = docs.map((doc, i) => {
@@ -523,7 +484,7 @@ export async function generatePatientBriefing(
     .filter((d) => d.documentType === 'consultation_note' || d.documentType === 'discharge_summary')
     .map((d) => ({
       id: d.id,
-      date: (d.documentDate ?? d.createdAt ?? new Date()).toISOString(),
+      date: d.documentDate?.toISOString() ?? null,
       doctorName: d.doctorName || 'Doctor not identified in available records',
       specialty: detectSpecialty([d.rawExtractedText, d.hospital, d.title].filter(Boolean).join(' ')),
       hospital: d.hospital ?? null,
@@ -533,20 +494,21 @@ export async function generatePatientBriefing(
     }));
 
   // 15. Formulate Clinical Summary Overview
-  const activeMedCount = currentMedications.length;
+  const activeMedCount = currentMedications.filter((med) => med.useStatus === 'confirmed_current').length;
+  const unconfirmedMedCount = currentMedications.length - activeMedCount;
   const activeDocCount = doctorProfiles.length;
   const abnormalLabCount = attributedLabs.filter((l) => l.isAbnormal).length;
-  const conflictCount = treatmentConflicts.length;
+  const conflictCount = medicationSafety.findings.filter((finding) => ['reconciliation_difference', 'conflicting_instructions', 'ingredient_duplication', 'allergy_concern'].includes(finding.category)).length;
 
   const clinicalSummary = `Comprehensive Doctor-Ready Briefing for ${user?.name || 'Patient'} covering ${docs.length} record${
     docs.length === 1 ? '' : 's'
   }. Documented care involves ${activeDocCount} identifiable healthcare professional${
     activeDocCount === 1 ? '' : 's'
-  } across ${doctorProfiles.map((d) => d.specialty || d.name).slice(0, 3).join(', ') || 'multiple specialties'}. Currently on ${activeMedCount} active medication${
+  } across ${doctorProfiles.map((d) => d.specialty || d.name).slice(0, 3).join(', ') || 'multiple specialties'}. There are ${activeMedCount} patient-confirmed current medication${
     activeMedCount === 1 ? '' : 's'
-  } and ${conditions.length} documented clinical condition${conditions.length === 1 ? '' : 's'}.${
+  }, ${unconfirmedMedCount} prescriptions or medication records with unconfirmed use, and ${conditions.length} documented clinical condition${conditions.length === 1 ? '' : 's'}.${
     abnormalLabCount > 0 ? ` ${abnormalLabCount} laboratory finding(s) outside reference ranges require review.` : ''
-  }${conflictCount > 0 ? ` ${conflictCount} potential treatment conflict(s) or duplicate therapies flagged for professional interpretation.` : ''}`;
+  }${conflictCount > 0 ? ` ${conflictCount} medication finding(s) flagged for professional verification.` : ''}`;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -562,6 +524,7 @@ export async function generatePatientBriefing(
       preferredLanguage: user?.preferredLanguage ?? 'en',
     },
     clinicalSummary,
+    medicationSafety,
     conditions,
     doctors: doctorProfiles,
     currentMedications,

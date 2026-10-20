@@ -10,6 +10,7 @@ import { MEDICATION_STATUSES, type MedicationCorrections, type MedicationEvidenc
 import type { TranslationKey } from '@/lib/i18n';
 import type { MedicationDetailsResponse } from './api-types';
 import { EvidenceList, LoadingMedicationData, MedicationError, MedicationSelect, medicationFetcher, saveMedicationUpdate, selectClassName, statusKeys } from './shared';
+import { PatientReportedValues } from './briefing-safety';
 
 const correctionKeys: Record<keyof MedicationCorrections, TranslationKey> = {
   name: 'medications.name',
@@ -21,6 +22,24 @@ const correctionKeys: Record<keyof MedicationCorrections, TranslationKey> = {
   duration: 'medications.duration',
   instructions: 'medications.instructions',
 };
+
+function AuditValues({ value }: { value: unknown }) {
+  const { t } = useLocale();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const status = record.patientStatus;
+  const corrections = record.corrections && typeof record.corrections === 'object' && !Array.isArray(record.corrections)
+    ? Object.fromEntries(Object.entries(record.corrections).filter(([key, fieldValue]) => key in correctionKeys && (typeof fieldValue === 'string' || fieldValue === null))) as MedicationCorrections
+    : undefined;
+  const sourceValues = (Object.keys(correctionKeys) as Array<keyof MedicationCorrections>)
+    .filter((key) => typeof record[key] === 'string');
+  return <div className="space-y-1">
+    {typeof status === 'string' && MEDICATION_STATUSES.includes(status as MedicationStatus) && <p>{t(statusKeys[status as MedicationStatus])}</p>}
+    {typeof record.reviewStatus === 'string' && ['open', 'needs_verification', 'reviewed', 'resolved', 'dismissed'].includes(record.reviewStatus) && <p>{t(`medications.${record.reviewStatus}` as TranslationKey)}</p>}
+    <PatientReportedValues corrections={corrections} />
+    {sourceValues.map((key) => <p key={key} className="break-words text-xs"><span className="text-muted-foreground">{t(correctionKeys[key])}: </span><bdi>{record[key] as string}</bdi></p>)}
+  </div>;
+}
 
 function observationEvidence(medication: MedicationRecord): MedicationEvidence {
   return {
@@ -153,8 +172,15 @@ export function MedicationDetails({ medicationId }: { medicationId: string }) {
         {data.audit.length === 0 ? <p className="text-sm text-muted-foreground">{t('medications.auditEmpty')}</p> : <ol className="space-y-3">
           {data.audit.map((entry) => <li key={entry.id} className="border-s-2 ps-3 text-sm">
             <time dateTime={entry.createdAt} className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString(locale)}</time>
-            <p className="mt-1 font-medium">{t('medications.patientReported')}</p>
+            <p className="mt-1 font-medium">{t(entry.action.startsWith('patient_') ? 'medications.patientReported' : entry.action === 'finding_review' ? 'medications.findingReview' : entry.action.startsWith('source_') ? 'medications.sourceUpdate' : 'medications.findingUpdate')}</p>
             {entry.note && <p dir="auto" className="mt-1 whitespace-pre-wrap break-words">{entry.note}</p>}
+            {Boolean(entry.before || entry.after) && <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-primary">{t('medications.details')}</summary>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div><p className="mb-1 text-xs text-muted-foreground">{t('medications.before')}</p><AuditValues value={entry.before} /></div>
+                <div><p className="mb-1 text-xs text-muted-foreground">{t('medications.after')}</p><AuditValues value={entry.after} /></div>
+              </div>
+            </details>}
           </li>)}
         </ol>}
       </section>
@@ -162,10 +188,10 @@ export function MedicationDetails({ medicationId }: { medicationId: string }) {
   );
 }
 
-export function MedicationRow({ medication }: { medication: MedicationRecord }) {
+export function MedicationRow({ medication, resolvedStatus }: { medication: MedicationRecord; resolvedStatus: MedicationStatus }) {
   const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
-  const status = medication.patientStatus ?? medication.observation.status ?? 'prescribed_unconfirmed';
+  const status = resolvedStatus;
   return (
     <details className="rounded-xl border bg-card p-4" onToggle={(event) => setExpanded(event.currentTarget.open)}>
       <summary className="cursor-pointer rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
