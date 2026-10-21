@@ -1,9 +1,6 @@
 "use client"
 
-import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Upload } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { useLocale } from "@/components/providers/locale-provider"
 import type { TranslationKey } from "@/lib/i18n"
@@ -51,15 +48,6 @@ export function TopBar() {
       <h1 className="text-lg font-semibold tracking-tight text-foreground">
         {title}
       </h1>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Upload button */}
-      <Button render={<Link href="/documents/upload" />} size="sm">
-        <Upload className="size-4" />
-        <span className="hidden sm:inline">Upload</span>
-      </Button>
     </header>
   )
 }
