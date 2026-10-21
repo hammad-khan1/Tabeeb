@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Heart,
 } from "lucide-react"
+import { TabeebLogo } from "@/components/brand"
 
 export default async function LandingPage() {
   const { userId } = await auth()
@@ -24,14 +25,7 @@ export default async function LandingPage() {
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Activity className="size-5" aria-hidden="true" />
-            </div>
-            <span className="text-xl font-semibold tracking-tight text-foreground">
-              Tabeeb
-            </span>
-          </div>
+          <TabeebLogo variant="primary" size="md" href="/" priority />
 
           <div className="flex items-center gap-3">
             <Link
@@ -144,12 +138,7 @@ export default async function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border px-4 py-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="size-4 text-primary" aria-hidden="true" />
-            <span className="text-sm font-medium text-foreground">
-              Tabeeb
-            </span>
-          </div>
+          <TabeebLogo variant="primary" size="sm" href="/" />
           <p className="text-sm text-muted-foreground">
             Your health data stays yours. Always.
           </p>

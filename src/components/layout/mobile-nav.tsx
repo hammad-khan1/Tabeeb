@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Activity,
   LayoutDashboard,
   FileText,
   MessageSquare,
@@ -16,6 +15,7 @@ import {
   Menu,
   ClipboardCheck,
 } from "lucide-react"
+import { TabeebLogo } from "@/components/brand"
 import { cn } from "@/lib/utils"
 import {
   Sheet,
@@ -61,14 +61,8 @@ export function MobileNav() {
       <SheetContent side="left" className="w-72 p-0">
         {/* Branding */}
         <SheetHeader className="border-b border-border px-5 py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Activity className="size-4.5" />
-            </div>
-            <SheetTitle className="text-lg font-semibold tracking-tight">
-              Tabeeb
-            </SheetTitle>
-          </div>
+          <SheetTitle className="sr-only">Tabeeb</SheetTitle>
+          <TabeebLogo variant="primary" size="md" href="/dashboard" />
         </SheetHeader>
 
         {/* Navigation */}

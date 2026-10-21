@@ -4,7 +4,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UserButton } from "@clerk/nextjs"
 import {
-  Activity,
   LayoutDashboard,
   FileText,
   MessageSquare,
@@ -20,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useLocale } from "@/components/providers/locale-provider";
 import type { TranslationKey } from "@/lib/i18n";
+import { TabeebLogo } from "@/components/brand"
 
 const navItems: Array<{ href: string; key: TranslationKey; icon: React.ElementType }> = [
   { href: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard },
@@ -34,20 +34,29 @@ const navItems: Array<{ href: string; key: TranslationKey; icon: React.ElementTy
   { href: "/settings", key: "nav.settings", icon: Settings },
 ]
 
-export function Sidebar() {
+export interface SidebarProps {
+  collapsed?: boolean
+}
+
+export function Sidebar({ collapsed = false }: SidebarProps) {
   const { t } = useLocale();
   const pathname = usePathname()
 
   return (
-    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-e lg:border-border lg:bg-sidebar">
+    <aside className={cn(
+      "hidden lg:flex lg:flex-col lg:border-e lg:border-border lg:bg-sidebar transition-all duration-200",
+      collapsed ? "lg:w-16" : "lg:w-64"
+    )}>
       {/* Branding */}
-      <div className="flex h-14 items-center gap-2.5 px-5 border-b border-border">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Activity className="size-4.5" />
-        </div>
-        <span className="text-lg font-semibold tracking-tight text-sidebar-foreground">
-          Tabeeb
-        </span>
+      <div className={cn(
+        "flex h-14 items-center border-b border-border",
+        collapsed ? "justify-center px-2" : "px-5"
+      )}>
+        {collapsed ? (
+          <TabeebLogo variant="icon" size="sm" href="/dashboard" />
+        ) : (
+          <TabeebLogo variant="primary" size="md" href="/dashboard" priority />
+        )}
       </div>
 
       {/* Navigation */}

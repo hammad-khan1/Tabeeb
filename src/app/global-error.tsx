@@ -35,6 +35,12 @@ export default function GlobalError({
         }}
       >
         <main style={{ maxWidth: "26rem", textAlign: "center" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/branding/tabeeb-app-icon.png"
+            alt="Tabeeb"
+            style={{ width: "48px", height: "48px", margin: "0 auto 1rem", display: "block" }}
+          />
           <h1 style={{ fontSize: "1.125rem", margin: "0 0 0.5rem" }}>
             Tabeeb could not start
           </h1>

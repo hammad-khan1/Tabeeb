@@ -20,6 +20,17 @@ const notoNastaliqUrdu = Noto_Nastaliq_Urdu({
 export const metadata: Metadata = {
   title: "Tabeeb - Personal Medical Document Vault",
   description: "AI-powered personal medical document vault that reads, understands, and reasons over your complete medical history.",
+  icons: {
+    icon: [
+      { url: "/branding/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/branding/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/branding/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/favicon.ico" },
+    ],
+    apple: [
+      { url: "/branding/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
 };
 
 /**
