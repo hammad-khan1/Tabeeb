@@ -19,7 +19,10 @@ import {
   X,
   FileSearch,
   BookOpen,
+  Copy,
 } from "lucide-react";
+import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
+import { TabeebLogo } from "@/components/brand";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -66,6 +69,15 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const handleCopy = (text: string, index: number) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    }
+  };
 
   // Document picker modal state
   const [docPickerOpen, setDocPickerOpen] = useState(false);
@@ -420,68 +432,94 @@ export default function ChatPage() {
                   key={msg.id ?? i}
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 sm:max-w-[80%] ${
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                      {msg.content}
-                    </p>
-
-                    {/* Clarification prompt & clickable option buttons */}
-                    {msg.role === "assistant" && msg.clarification && (
-                      <div className="mt-3 space-y-2 rounded-xl border border-primary/20 bg-background/90 p-3 shadow-sm">
-                        <p className="text-xs font-semibold text-foreground">
-                          Please choose how you would like me to answer:
-                        </p>
-                        <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
-                          {msg.clarification.options.map((option, idx) => (
-                            <Button
-                              key={idx}
-                              variant="outline"
-                              size="sm"
-                              className="h-8 justify-start gap-1.5 text-xs hover:border-primary hover:bg-primary/5 sm:justify-center"
-                              onClick={() =>
-                                handleClarificationClick(option, msg.clarification!.originalQuestion)
-                              }
-                            >
-                              {option.mode === "latest" && <FileSearch className="size-3.5 text-primary" />}
-                              {option.mode === "all" && <BookOpen className="size-3.5 text-primary" />}
-                              {option.mode === "specific" && <Layers className="size-3.5 text-primary" />}
-                              <span>{option.label}</span>
-                            </Button>
-                          ))}
-                        </div>
+                  {msg.role === "user" ? (
+                    <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-primary px-4 py-2.5 text-primary-foreground shadow-xs sm:max-w-[80%]">
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                        {msg.content}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="group relative flex max-w-[92%] gap-2.5 sm:max-w-[85%]">
+                      <div className="shrink-0 mt-1">
+                        <TabeebLogo variant="icon" size="sm" alt="Tabeeb" />
                       </div>
-                    )}
-
-                    {/* Citations */}
-                    {msg.role === "assistant" &&
-                      msg.sources &&
-                      msg.sources.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/50 pt-2.5">
-                          <span className="me-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                            Sources:
-                          </span>
-                          {msg.sources.map((source: SourceReference, si: number) => (
-                            <Link
-                              key={si}
-                              href={`/documents/${source.documentId}`}
-                              className="inline-flex items-center gap-1 rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-medium transition-colors hover:bg-background"
+                      <div className="flex-1 rounded-2xl rounded-tl-xs border border-border/70 bg-card/90 px-4 py-3.5 shadow-xs dark:bg-muted/30">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 overflow-hidden">
+                            <MarkdownRenderer
+                              content={msg.content}
+                              sources={msg.sources}
+                              isStreaming={isLoading && i === messages.length - 1}
+                            />
+                          </div>
+                          {msg.content && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(msg.content, i)}
+                              className="shrink-0 -mt-1 -me-1 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                              aria-label="Copy response"
+                              title="Copy response"
                             >
-                              <FileText className="size-2.5" aria-hidden="true" />
-                              <span className="max-w-[180px] truncate">{source.documentTitle}</span>
-                              {source.section && (
-                                <span className="text-muted-foreground">({source.section})</span>
+                              {copiedIndex === i ? (
+                                <Check className="size-3.5 text-primary" />
+                              ) : (
+                                <Copy className="size-3.5" />
                               )}
-                            </Link>
-                          ))}
+                            </button>
+                          )}
                         </div>
-                      )}
-                  </div>
+
+                        {/* Clarification prompt & clickable option buttons */}
+                        {msg.clarification && (
+                          <div className="mt-3.5 space-y-2 rounded-xl border border-primary/20 bg-background/90 p-3 shadow-xs">
+                            <p className="text-xs font-semibold text-foreground">
+                              Please choose how you would like me to answer:
+                            </p>
+                            <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
+                              {msg.clarification.options.map((option, idx) => (
+                                <Button
+                                  key={idx}
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 justify-start gap-1.5 text-xs hover:border-primary hover:bg-primary/5 sm:justify-center"
+                                  onClick={() =>
+                                    handleClarificationClick(option, msg.clarification!.originalQuestion)
+                                  }
+                                >
+                                  {option.mode === "latest" && <FileSearch className="size-3.5 text-primary" />}
+                                  {option.mode === "all" && <BookOpen className="size-3.5 text-primary" />}
+                                  {option.mode === "specific" && <Layers className="size-3.5 text-primary" />}
+                                  <span>{option.label}</span>
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Citations */}
+                        {msg.sources && msg.sources.length > 0 && (
+                          <div className="mt-3.5 flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2.5">
+                            <span className="me-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              Sources:
+                            </span>
+                            {msg.sources.map((source: SourceReference, si: number) => (
+                              <Link
+                                key={si}
+                                href={`/documents/${source.documentId}`}
+                                className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-foreground/80 transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                              >
+                                <FileText className="size-2.5 text-primary" aria-hidden="true" />
+                                <span className="max-w-[180px] truncate">{source.documentTitle}</span>
+                                {source.section && (
+                                  <span className="text-muted-foreground">({source.section})</span>
+                                )}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -490,11 +528,16 @@ export default function ChatPage() {
               messages.length > 0 &&
               messages[messages.length - 1].content === "" && (
                 <div className="flex justify-start">
-                  <div className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3">
-                    <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
-                    <span className="text-sm text-muted-foreground">
-                      Searching records & analyzing...
-                    </span>
+                  <div className="flex max-w-[90%] gap-2.5 sm:max-w-[85%]">
+                    <div className="shrink-0 mt-1">
+                      <TabeebLogo variant="icon" size="sm" alt="Tabeeb" />
+                    </div>
+                    <div className="flex items-center gap-2.5 rounded-2xl rounded-tl-xs border border-border/60 bg-card/90 px-4 py-3 shadow-xs dark:bg-muted/30">
+                      <Loader2 className="size-4 animate-spin text-primary" aria-hidden="true" />
+                      <span className="text-sm text-muted-foreground">
+                        Searching records & analyzing...
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
