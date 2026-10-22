@@ -1,15 +1,17 @@
-import { eq, and, sql, desc, inArray } from 'drizzle-orm';
+import { eq, and, sql, desc, inArray, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getDb } from '@/lib/db';
 import { appUrl } from '@/lib/env';
 import { ApiError, notFound } from '@/lib/api-error';
-import { shareLinks, documents } from '../../../drizzle/schema';
+import { shareLinks, documents, ramadanPlans } from '../../../drizzle/schema';
 import { getMedicalHistorySummary, type MedicalHistorySummary } from './summarizer';
 
 interface CreateShareLinkOptions {
   title?: string;
   documentIds?: string[];
   expiresInHours?: number;
+  /** Shares a Ramzan plan sheet instead of the history. */
+  ramadanPlanId?: string;
 }
 
 interface ShareLinkResult {
@@ -39,7 +41,16 @@ export async function createShareLink(
   userId: string,
   options: CreateShareLinkOptions = {}
 ): Promise<ShareLinkResult> {
-  const { title, documentIds = [], expiresInHours = 168 } = options;
+  const { title, documentIds = [], expiresInHours = 168, ramadanPlanId } = options;
+
+  if (ramadanPlanId) {
+    const [plan] = await getDb()
+      .select({ id: ramadanPlans.id })
+      .from(ramadanPlans)
+      .where(and(eq(ramadanPlans.userId, userId), eq(ramadanPlans.id, ramadanPlanId)))
+      .limit(1);
+    if (!plan) throw notFound('Ramzan plan not found.');
+  }
 
   // Only the caller's own documents may be scoped in, so a guessed id cannot widen
   // the share to somebody else's record.
@@ -64,6 +75,7 @@ export async function createShareLink(
     token,
     title: title ?? null,
     documentIds: ownedIds,
+    ramadanPlanId: ramadanPlanId ?? null,
     expiresAt,
   });
 
@@ -85,7 +97,10 @@ export async function getSharedHistory(token: string): Promise<SharedHistoryData
       and(
         eq(shareLinks.token, token),
         eq(shareLinks.isActive, true),
-        sql`${shareLinks.expiresAt} > now()`
+        sql`${shareLinks.expiresAt} > now()`,
+        // A plan-sheet link has no documentIds, which below means "the whole record".
+        // Served here, it would hand the doctor everything instead of one page.
+        isNull(shareLinks.ramadanPlanId)
       )
     )
     .returning();
@@ -120,7 +135,9 @@ export async function listShareLinks(userId: string) {
       createdAt: shareLinks.createdAt,
     })
     .from(shareLinks)
-    .where(eq(shareLinks.userId, userId))
+    // Plan-sheet links are listed with the Ramzan plan, not as history shares that
+    // would read as "whole record".
+    .where(and(eq(shareLinks.userId, userId), isNull(shareLinks.ramadanPlanId)))
     .orderBy(desc(shareLinks.createdAt))
     .limit(100);
 
@@ -128,6 +145,29 @@ export async function listShareLinks(userId: string) {
     ...row,
     url: shareUrlFor(row.token),
     documentCount: row.documentIds.length,
+    isExpired: row.expiresAt.getTime() <= Date.now(),
+  }));
+}
+
+/** The plan-sheet links for one of the caller's Ramzan plans. */
+export async function listShareLinksForPlan(userId: string, planId: string) {
+  const rows = await getDb()
+    .select({
+      token: shareLinks.token,
+      title: shareLinks.title,
+      expiresAt: shareLinks.expiresAt,
+      isActive: shareLinks.isActive,
+      viewCount: shareLinks.viewCount,
+      createdAt: shareLinks.createdAt,
+    })
+    .from(shareLinks)
+    .where(and(eq(shareLinks.userId, userId), eq(shareLinks.ramadanPlanId, planId)))
+    .orderBy(desc(shareLinks.createdAt))
+    .limit(100);
+
+  return rows.map((row) => ({
+    ...row,
+    url: shareUrlFor(row.token),
     isExpired: row.expiresAt.getTime() <= Date.now(),
   }));
 }

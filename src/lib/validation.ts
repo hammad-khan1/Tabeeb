@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { badRequest } from './api-error';
 import { SUPPORTED_MIME_TYPES, MAX_FILE_SIZE } from './constants';
+import { RISK_ITEMS } from '@/services/ramadan/constants';
+import { SYMPTOMS } from '@/services/ramadan/glucose-rules';
 
 /**
  * Every request boundary parses through here. Zod was already a dependency but was
@@ -132,6 +134,94 @@ export const revokeShareSchema = z.object({
 export const confirmExtractionSchema = z.object({
   correctedText: z.string().max(500_000).optional(),
   structuredData: z.record(z.string(), z.unknown()).optional(),
+});
+
+// ── Ramzan Mode ─────────────────────────────────────────────────────────────
+
+/** A civil date, kept as a string: Ramzan dates are days, not instants. */
+const calendarDay = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, 'must be a real date');
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const ramadanPlanSchema = z
+  .object({
+    ramadanStart: calendarDay,
+    ramadanEnd: calendarDay,
+    intendsToFast: z.boolean(),
+    city: z.string().trim().min(1).max(50).optional(),
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+    caregiverName: z.string().trim().max(255).nullish(),
+    caregiverPhone: z
+      .string()
+      .trim()
+      .regex(/^\+?[0-9][0-9 -]{6,19}$/, 'must be a phone number')
+      .nullish(),
+  })
+  .refine((value) => {
+    // Ramzan is 29 or 30 days; a little slack for a date entered a day off.
+    const days = (Date.parse(value.ramadanEnd) - Date.parse(value.ramadanStart)) / DAY_MS;
+    return days >= 27 && days <= 30;
+  }, 'ramadanEnd must be 28 to 31 days after ramadanStart, inclusive')
+  .refine(
+    (value) => value.city !== undefined || (value.latitude !== undefined && value.longitude !== undefined),
+    'Choose a city or share your location'
+  );
+
+export const ramadanPlanUpdateSchema = z.object({
+  /** The uploaded prescription that holds the doctor's Ramzan doses; null unlinks it. */
+  doctorPlanDocumentId: z.uuid().nullable(),
+});
+
+const RISK_ITEM_IDS = RISK_ITEMS.map((item) => item.id) as [string, ...string[]];
+
+export const ramadanRiskSchema = z.object({
+  answers: z
+    .array(
+      z
+        .object({
+          item: z.enum(RISK_ITEM_IDS),
+          option: z.string().trim().min(1).max(50),
+        })
+        .refine(
+          ({ item, option }) =>
+            RISK_ITEMS.find((candidate) => candidate.id === item)?.options.some((o) => o.id === option),
+          'option does not belong to item'
+        )
+    )
+    .max(RISK_ITEMS.length)
+    .default([]),
+});
+
+export const glucoseLogSchema = z
+  .object({
+    text: z.string().trim().min(1).max(500).optional(),
+    value: z.number().positive().max(2000).optional(),
+    unit: z.enum(['mg_dl', 'mmol_l']).optional(),
+    symptoms: z.array(z.enum(SYMPTOMS)).max(SYMPTOMS.length).default([]),
+    source: z.enum(['typed', 'voice', 'photo']).default('typed'),
+    /** Set when the patient has confirmed a value Tabeeb asked them to check. */
+    confirmed: z.boolean().default(false),
+  })
+  .refine((value) => value.value === undefined || value.unit !== undefined, 'unit is required with value')
+  .refine(
+    (value) => value.text !== undefined || value.value !== undefined || value.symptoms.length > 0,
+    'Send a reading, or the symptoms you have'
+  );
+
+export const glucoseLogUpdateSchema = z.object({
+  fastBroken: z.literal(true),
+});
+
+export const planShareSchema = z.object({
+  expiresInHours: z.coerce.number().int().min(1).max(24 * 30).default(24 * 30),
 });
 
 export const uuidParamSchema = z.uuid('Invalid id');

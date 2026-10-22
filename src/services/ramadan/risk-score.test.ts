@@ -86,6 +86,7 @@ describe('scoreRisk', () => {
 
     expect(result.breakdown[0]).toEqual({
       item: 'treatment',
+      option: 'glibenclamide',
       points: 1,
       value: 'Daonil 5mg',
       source: 'record',

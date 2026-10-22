@@ -52,6 +52,12 @@ export const LIMITS = {
    */
   deleteAccount: { limit: 3, windowMs: 60 * 60 * 1000 },
 
+  /** Ramzan plan and risk-score writes. */
+  ramadan: { limit: 120, windowMs: 60 * 60 * 1000 },
+
+  /** A glucose log can fall back to a model call to read the reading. */
+  glucoseLog: { limit: 60, windowMs: 60 * 60 * 1000 },
+
   /** Writes to the profile that is injected into the chat prompt. */
   settings: { limit: 60, windowMs: 60 * 60 * 1000 },
 

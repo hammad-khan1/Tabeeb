@@ -204,6 +204,26 @@ export const RISK_ITEMS: readonly RiskItem[] = [
  */
 export const TREATMENT_COMBINATION_RULE: 'highest' | null = null; // TODO(verify): IDF-DAR 2021 risk score table, multiple treatments
 
+/**
+ * Which option a recorded HbA1c or eGFR falls in. The table gives ranges ("7.5–9%",
+ * "eGFR 30–45") without saying which side owns a value exactly on the edge, so the
+ * edges are not trusted until checked: `verified: false` keeps the verify test failing.
+ */
+export const HBA1C_OPTIONS = {
+  verified: false, // TODO(verify): IDF-DAR 2021 risk score table, HbA1c edge ownership
+  /** Percent. Above this is over_9; at or above `midFrom` is 7_5_to_9; below is under_7_5. */
+  highAbove: 9,
+  midFrom: 7.5,
+} as const;
+
+export const EGFR_OPTIONS = {
+  verified: false, // TODO(verify): IDF-DAR 2021 risk score table, eGFR edge ownership
+  /** mL/min/1.73m². Below `severeBelow` is egfr_under_30, and so on upward. */
+  severeBelow: 30,
+  moderateBelow: 45,
+  mildBelow: 60,
+} as const;
+
 // ── Break-the-fast thresholds ───────────────────────────────────────────────
 
 /**

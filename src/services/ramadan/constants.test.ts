@@ -4,6 +4,8 @@ import {
   RISK_BANDS,
   SCORE_STEP,
   TREATMENT_COMBINATION_RULE,
+  HBA1C_OPTIONS,
+  EGFR_OPTIONS,
   BREAK_FAST_BELOW_MG_DL,
   BREAK_FAST_ABOVE_MG_DL,
   MG_DL_PER_MMOL_L,
@@ -23,6 +25,8 @@ describe('guideline constants', () => {
       item.options.filter((option) => option.points === null).map((option) => `${item.id}.${option.id}`)
     );
     if (TREATMENT_COMBINATION_RULE === null) unverified.push('TREATMENT_COMBINATION_RULE');
+    if (!HBA1C_OPTIONS.verified) unverified.push('HBA1C_OPTIONS');
+    if (!EGFR_OPTIONS.verified) unverified.push('EGFR_OPTIONS');
 
     expect(unverified, `TODO(verify) values still to fill in:\n${unverified.join('\n')}`).toEqual([]);
   });

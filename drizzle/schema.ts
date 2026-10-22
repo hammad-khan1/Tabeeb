@@ -252,7 +252,8 @@ export const ramadanSlotEnum = pgEnum('ramadan_slot', [
 
 /** Where an auto-filled score input was read from, so the patient can see and override it. */
 export interface RamadanProvenance {
-  table: 'lab_results' | 'medications' | 'diagnoses';
+  /** 'prayer_times' is the fasting-hours item, computed from the plan's location. */
+  table: 'lab_results' | 'medications' | 'diagnoses' | 'prayer_times';
   rowId: string;
   documentId: string | null;
   value: string;
@@ -262,7 +263,10 @@ export interface RamadanProvenance {
 /** One line of the risk score, kept with its reason so the doctor sheet can show it. */
 export interface RamadanScoreItem {
   item: string;
-  points: number;
+  /** Option id from services/ramadan/constants, so the score can be recomputed. */
+  option: string;
+  /** null while the option's points are still TODO(verify). */
+  points: number | null;
   value: string;
   source: 'record' | 'answer' | 'override';
   provenance?: RamadanProvenance;

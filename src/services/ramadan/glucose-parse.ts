@@ -115,6 +115,11 @@ function finish(
   return { ok: true, value, unit, valueMgDl: toMgDl(value, unit), needsConfirmation, method };
 }
 
+/** A number the patient entered or confirmed, with its unit, through the same range check. */
+export function readingFromNumber(value: number, unit: GlucoseUnit): GlucoseParseResult {
+  return finish(value, unit, 'digits', false);
+}
+
 /** The deterministic reader. No network, no model. */
 export function parseGlucoseText(text: string): GlucoseParseResult {
   const words = tokenize(text);

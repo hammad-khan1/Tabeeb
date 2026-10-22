@@ -98,6 +98,7 @@ export function scoreRisk(
     total += option.points;
     breakdown.push({
       item: item.id,
+      option: option.id,
       points: option.points,
       value: answer.value,
       source: answer.source,
