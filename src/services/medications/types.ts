@@ -15,7 +15,7 @@ export interface MedicationIdentity {
   rxcui: string | null;
   conceptType: string | null;
   ingredients: Array<{ rxcui: string; name: string }>;
-  provider: 'RxNorm' | null;
+  provider: 'RxNorm' | 'Pharmapedia' | null;
   version: string | null;
   checkedAt: string | null;
   limitations: string[];

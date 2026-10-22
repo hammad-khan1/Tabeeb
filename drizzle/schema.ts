@@ -309,3 +309,81 @@ export const briefingShareLinks = pgTable('briefing_share_links', {
   index('briefing_share_links_user_idx').on(table.userId),
   index('briefing_share_links_token_idx').on(table.token),
 ]);
+
+export const catalogVerificationStatusEnum = pgEnum('catalog_verification_status', [
+  'imported_unverified',
+  'candidate_match',
+  'manually_verified',
+  'unresolved',
+  'rejected',
+]);
+
+export const pakistanMedicineBrands = pgTable('pakistan_medicine_brands', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  brandName: varchar('brand_name', { length: 500 }).notNull(),
+  normalizedName: varchar('normalized_name', { length: 500 }).notNull(),
+  manufacturer: varchar('manufacturer', { length: 500 }),
+  companyId: integer('company_id'),
+  sourceBrandId: integer('source_brand_id').notNull(),
+  dataSource: varchar('data_source', { length: 64 }).default('pharmapedia').notNull(),
+  verificationStatus: catalogVerificationStatusEnum('verification_status').default('imported_unverified').notNull(),
+  aliases: jsonb('aliases').$type<string[]>().default([]),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('pk_brands_norm_name_idx').on(table.normalizedName),
+  index('pk_brands_source_id_idx').on(table.sourceBrandId),
+  index('pk_brands_manufacturer_idx').on(table.manufacturer),
+]);
+
+export const pakistanMedicineIngredients = pgTable('pakistan_medicine_ingredients', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  name: varchar('name', { length: 500 }).notNull(),
+  normalizedName: varchar('normalized_name', { length: 500 }).notNull(),
+  rxnormCui: varchar('rxnorm_cui', { length: 50 }),
+  sourceCode: integer('source_code'),
+  overview: text('overview'),
+  verificationStatus: catalogVerificationStatusEnum('verification_status').default('imported_unverified').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('pk_ingr_norm_name_idx').on(table.normalizedName),
+  index('pk_ingr_source_code_idx').on(table.sourceCode),
+]);
+
+export const pakistanMedicineProducts = pgTable('pakistan_medicine_products', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  brandId: varchar('brand_id', { length: 64 }).notNull().references(() => pakistanMedicineBrands.id, { onDelete: 'cascade' }),
+  productName: varchar('product_name', { length: 500 }).notNull(),
+  form: varchar('form', { length: 100 }),
+  strength: varchar('strength', { length: 255 }),
+  packing: varchar('packing', { length: 255 }),
+  tradePrice: varchar('trade_price', { length: 50 }),
+  retailPrice: varchar('retail_price', { length: 50 }),
+  category: varchar('category', { length: 100 }),
+  sourceProductId: integer('source_product_id').notNull(),
+  verificationStatus: catalogVerificationStatusEnum('verification_status').default('imported_unverified').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('pk_prod_brand_id_idx').on(table.brandId),
+  index('pk_prod_form_idx').on(table.form),
+  index('pk_prod_strength_idx').on(table.strength),
+  index('pk_prod_source_id_idx').on(table.sourceProductId),
+]);
+
+export const pakistanProductIngredients = pgTable('pakistan_product_ingredients', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  productId: varchar('product_id', { length: 64 }).notNull().references(() => pakistanMedicineProducts.id, { onDelete: 'cascade' }),
+  ingredientId: varchar('ingredient_id', { length: 64 }).references(() => pakistanMedicineIngredients.id, { onDelete: 'set null' }),
+  ingredientName: varchar('ingredient_name', { length: 500 }).notNull(),
+  strength: varchar('strength', { length: 255 }),
+  sequence: integer('sequence').default(1).notNull(),
+  verificationStatus: catalogVerificationStatusEnum('verification_status').default('imported_unverified').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('pk_prod_ingr_prod_id_idx').on(table.productId),
+  index('pk_prod_ingr_ingr_id_idx').on(table.ingredientId),
+  index('pk_prod_ingr_name_idx').on(table.ingredientName),
+]);

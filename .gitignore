@@ -52,3 +52,8 @@ next-env.d.ts
 # python sidecar virtualenv and downloaded model weights
 services/xray-classifier/.venv/
 services/xray-classifier/__pycache__/
+
+# local medicine database (private development SQLite)
+/local-data/*.db
+/local-data/*.sqlite
+/local-data/*.sqlite3

@@ -60,7 +60,9 @@ export function medicationEvidence(record: MedicationRecord): MedicationEvidence
 export function medicationIdentityKey(record: MedicationRecord): string {
   const identity = record.observation.normalization;
   if (identity?.status === 'verified') {
-    if (identity.ingredients.length) return `ingredients:${identity.ingredients.map((item) => item.rxcui).sort().join(',')}`;
+    if (identity.ingredients.length) {
+      return `ingredients:${identity.ingredients.map((item) => (item.rxcui && item.rxcui !== '0' ? item.rxcui : normalizedText(item.name))).sort().join(',')}`;
+    }
     if (identity.rxcui) return `concept:${identity.rxcui}`;
   }
   return `documented-name:${normalizedText(record.observation.originalName ?? record.name)}`;

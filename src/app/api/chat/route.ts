@@ -11,6 +11,7 @@ import { buildQaPrompt } from '@/services/rag/prompt-builder';
 import { rewriteForRetrieval, type ConversationTurn } from '@/services/rag/query-rewriter';
 import { streamAnswer } from '@/services/rag/answer-streamer';
 import { resolveSourceScope } from '@/services/rag/source-scope-resolver';
+import { pakistanMedicationCatalogService } from '@/services/medications/pakistan-catalog/catalog-service';
 import {
   medications,
   allergies,
@@ -369,11 +370,29 @@ export async function POST(request: NextRequest) {
       relevanceScore: c.relevanceScore,
     }));
 
-    const promptMessages = buildQaPrompt(message, chunks, userProfile, priorTurns, {
-      mode: resolvedScope.mode,
-      documentTitles: resolvedScope.documentTitles,
-      label: resolvedScope.label,
-    });
+    let medicineCatalogReference: string | undefined;
+    try {
+      const pkLookup = await pakistanMedicationCatalogService.lookupMedication(message);
+      if (pkLookup.source === 'pakistan_catalog' && pkLookup.genericName) {
+        const ingStr = pkLookup.ingredients.map((i) => i.name + (i.strength ? ` (${i.strength})` : '')).join(' + ');
+        medicineCatalogReference = `- Brand: ${pkLookup.brandName ?? message}\n- Generic Ingredients: ${ingStr}\n- Manufacturer: ${pkLookup.manufacturer ?? 'Unknown'}\n- Available Form: ${pkLookup.dosageForm ?? 'N/A'}`;
+      }
+    } catch {
+      // ignore
+    }
+
+    const promptMessages = buildQaPrompt(
+      message,
+      chunks,
+      userProfile,
+      priorTurns,
+      {
+        mode: resolvedScope.mode,
+        documentTitles: resolvedScope.documentTitles,
+        label: resolvedScope.label,
+      },
+      medicineCatalogReference
+    );
 
     const stream = await streamAnswer(promptMessages);
 

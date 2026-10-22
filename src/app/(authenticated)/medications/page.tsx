@@ -14,6 +14,7 @@ import { MedicationTimeline } from '@/components/medications/medication-timeline
 import { SafetyFindings } from '@/components/medications/safety-findings';
 import { PrescriptionComparison } from '@/components/medications/prescription-comparison';
 import { ProviderCoverage } from '@/components/medications/provider-coverage';
+import { PakistanMedicineSearch } from '@/components/medications/pakistan-medicine-search';
 import type { MedicationDashboardResponse } from '@/components/medications/api-types';
 import { LoadingMedicationData, MedicationError, MedicationSelect, Pagination, medicationFetcher, statusKeys } from '@/components/medications/shared';
 
@@ -62,6 +63,7 @@ export default function MedicationsPage() {
           <div className="overflow-x-auto pb-2">
             <TabsList className="h-auto min-h-9 w-max" aria-label={t('nav.medications')}>
               <TabsTrigger value="overview">{t('medications.overview')}</TabsTrigger>
+              <TabsTrigger value="catalog">Pakistan Medicine Catalog</TabsTrigger>
               <TabsTrigger value="findings">{t('medications.findings')}</TabsTrigger>
               <TabsTrigger value="timeline">{t('medications.timeline')}</TabsTrigger>
               <TabsTrigger value="comparison">{t('medications.compare')}</TabsTrigger>
@@ -91,6 +93,7 @@ export default function MedicationsPage() {
             </div> : <div className="space-y-3">{data.medications.map((medication) => <MedicationRow key={medication.id} medication={medication} resolvedStatus={data.medicationOptions.find((option) => option.id === medication.id)?.status ?? 'unknown'} />)}</div>}
             <Pagination pagination={data.pagination} onPage={setPage} busy={isValidating} />
           </TabsContent>
+          <TabsContent value="catalog"><PakistanMedicineSearch /></TabsContent>
           <TabsContent value="findings"><SafetyFindings /></TabsContent>
           <TabsContent value="timeline"><MedicationTimeline medicationOptions={data.medicationOptions} /></TabsContent>
           <TabsContent value="comparison"><PrescriptionComparison documents={data.documents} medicationOptions={data.medicationOptions} /></TabsContent>

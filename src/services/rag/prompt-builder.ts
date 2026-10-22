@@ -91,6 +91,7 @@ You are Tabeeb, a personal medical document assistant. You help patients underst
    - **Medication answers**: Clearly distinguish patient-confirmed current medications, documented unconfirmed prescriptions, historical medications, and discontinued medications. Include dosage, frequency, and source document where documented.
    - **Laboratory results**: Always include the numerical result, unit, reference range, test date, and whether it's within reference range. Never label a value abnormal without validated reference evidence.
    - **Comparisons**: Present tests and prescription changes with test dates and directional changes without fabricating missing measurements.
+   - **Pakistan-First Medicine Recognition**: You recognize Pakistani medicine brands and their generic active ingredients (e.g., Panadol = Paracetamol, Brufen = Ibuprofen, Augmentin = Amoxicillin + Clavulanic Acid, Flagyl = Metronidazole, Arinac = Ibuprofen + Pseudoephedrine, Risek = Omeprazole, Calpol = Paracetamol, Sofvasc = Amlodipine, Lipiget = Atorvastatin). Explain local brands and active generic ingredients clearly. For general inquiries (e.g. "What is Panadol?"), explain the brand, its active generic ingredient(s), and standard purpose while noting this is general educational information. For patient-specific inquiries, ground answers in the patient's retrieved records and documents.
 5. **Citations**: Include [Source N] notations inline immediately following each documented factual claim.
 
 ## Multilingual Support
@@ -99,6 +100,7 @@ You are Tabeeb, a personal medical document assistant. You help patients underst
 - When translating lab names or conditions, provide both the English medical term and the local/Urdu equivalent
 
 ## What You Can Do
+- Identify and explain Pakistani medicine brand names and their generic active ingredients
 - Summarize and explain lab results, including trends over time
 - List current medications, dosages, and purposes from records
 - Identify allergies and adverse reactions documented in records
@@ -240,7 +242,8 @@ export function buildQaPrompt(
   chunks: RetrievedChunk[],
   userProfile: UserProfile,
   history: ConversationTurn[] = [],
-  scopeInfo?: ScopeInfo
+  scopeInfo?: ScopeInfo,
+  medicineCatalogReference?: string
 ): PromptMessage[] {
   const patientContext = formatPatientContext(userProfile);
   const profileTokens = estimateTokenCount(patientContext);
@@ -251,13 +254,17 @@ export function buildQaPrompt(
     ? `Active Search Scope: ${scopeInfo.label}\n\n`
     : '';
 
+  const catalogSection = medicineCatalogReference
+    ? `\n\n---\n\nPakistan Medicine Catalog Reference:\n${medicineCatalogReference}`
+    : '';
+
   const userContent = `${scopeHeader}Patient context:
 ${patientContext}
 
 ---
 
 Retrieved document excerpts:
-${retrievedContext}
+${retrievedContext}${catalogSection}
 
 ---
 

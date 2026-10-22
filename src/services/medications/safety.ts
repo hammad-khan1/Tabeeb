@@ -159,12 +159,18 @@ export async function evaluateMedicationSafety(
       }
       const a = usableMedicationIdentity(first);
       const b = usableMedicationIdentity(second);
-      const shared = a?.ingredients.filter((ingredient) => b?.ingredients.some((other) => other.rxcui === ingredient.rxcui)) ?? [];
+      const shared = a?.ingredients.filter((ingredient) =>
+        b?.ingredients.some((other) =>
+          (ingredient.rxcui && ingredient.rxcui !== '0' && other.rxcui === ingredient.rxcui) ||
+          normalizedText(other.name) === normalizedText(ingredient.name)
+        )
+      ) ?? [];
       if (shared.length) {
+        const providerName = a?.provider === 'Pharmapedia' || b?.provider === 'Pharmapedia' ? 'Pharmapedia / Pakistan Medicine Catalog' : 'RxNorm';
         add('ingredient_duplication', [first, second], 'Verified ingredient overlap',
-          `${first.name} and ${second.name} share ${shared.map((item) => item.name).join(', ')} according to RxNorm. Strengths, formulations and treatment episodes may differ. This is not proof of a prescribing error or simultaneous use; ask a pharmacist or clinician to reconcile them.`,
-          'verified', ['ingredients', shared.map((item) => item.rxcui).sort()],
-          { source: { provider: 'RxNorm', version: a!.version, checkedAt: a!.checkedAt, url: RXNORM_URL } });
+          `${first.name} and ${second.name} share ${shared.map((item) => item.name).join(', ')} according to ${providerName}. Strengths, formulations and treatment episodes may differ. This is not proof of a prescribing error or simultaneous use; ask a pharmacist or clinician to reconcile them.`,
+          'verified', ['ingredients', shared.map((item) => (item.rxcui && item.rxcui !== '0' ? item.rxcui : normalizedText(item.name))).sort()],
+          { source: { provider: (a?.provider ?? 'RxNorm') as 'RxNorm', version: a!.version, checkedAt: a!.checkedAt, url: a?.provider === 'Pharmapedia' ? 'local-data/pharmapedia.db' : RXNORM_URL } });
       }
       if (medicationIdentityKey(first) !== medicationIdentityKey(second)) continue;
       for (const difference of medicationDifferences(first, second)) {

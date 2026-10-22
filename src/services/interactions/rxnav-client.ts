@@ -1,4 +1,5 @@
 import { limitConcurrency } from '@/lib/concurrency';
+import { pakistanMedicationCatalogService } from '@/services/medications/pakistan-catalog/catalog-service';
 
 /**
  * RxNav client.
@@ -205,8 +206,33 @@ export async function resolveDrugConcepts(
     if (cached) return { ...cached, query };
 
     // The stored id skips the name lookup entirely — one request saved per drug.
-    const rxcui = entry.rxcui?.trim() || (await getRxNormId(query));
+    let rxcui = entry.rxcui?.trim() || null;
+    let fallbackIngredients: Array<{ rxcui: string; name: string }> = [];
+
     if (!rxcui) {
+      try {
+        const pkLookup = await pakistanMedicationCatalogService.lookupMedication(query);
+        if (pkLookup.source === 'pakistan_catalog' && pkLookup.genericName) {
+          const primaryGeneric = pkLookup.ingredients[0]?.name ?? pkLookup.genericName;
+          rxcui = await getRxNormId(primaryGeneric);
+          if (!rxcui && pkLookup.ingredients.length > 0) {
+            fallbackIngredients = pkLookup.ingredients.map((i) => ({ rxcui: '0', name: i.name.toLowerCase() }));
+          }
+        }
+      } catch {
+        // proceed to direct RxNorm lookup
+      }
+
+      if (!rxcui) {
+        rxcui = await getRxNormId(query);
+      }
+    }
+
+    if (!rxcui) {
+      if (fallbackIngredients.length > 0) {
+        const concept = { query, rxcui: null, ingredients: fallbackIngredients, classes: [] };
+        return cacheConcept(cacheKey, concept);
+      }
       return { query, rxcui: null, ingredients: [], classes: [] };
     }
 

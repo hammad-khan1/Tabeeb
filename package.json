@@ -15,7 +15,10 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "test:unit": "vitest run --exclude '**/app/api/**'",
-    "test:routes": "vitest run 'src/app/api/**/*.test.ts'"
+    "test:routes": "vitest run 'src/app/api/**/*.test.ts'",
+    "medicines:inspect": "tsx scripts/inspect-medicines.ts",
+    "medicines:import:dry-run": "tsx scripts/import-medicines.ts --dry-run",
+    "medicines:import": "tsx scripts/import-medicines.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",
