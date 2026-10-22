@@ -22,6 +22,7 @@ import {
   Copy,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
+import { ReadAloudControl } from "@/components/chat/read-aloud-control";
 import { TabeebLogo } from "@/components/brand";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -516,6 +517,15 @@ export default function ChatPage() {
                               </Link>
                             ))}
                           </div>
+                        )}
+
+                        {/* Read Aloud Bilingual Audio Controls */}
+                        {msg.content && !(isLoading && i === messages.length - 1) && (
+                          <ReadAloudControl
+                            messageId={msg.id || `msg-${i}`}
+                            content={msg.content}
+                            className="mt-3"
+                          />
                         )}
                       </div>
                     </div>
