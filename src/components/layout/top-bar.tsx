@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation"
 import { MobileNav } from "@/components/layout/mobile-nav"
+import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { useLocale } from "@/components/providers/locale-provider"
 import type { TranslationKey } from "@/lib/i18n"
 
@@ -40,14 +41,21 @@ export function TopBar() {
     : pathname.split("/").filter(Boolean).pop()?.replace(/^./, (c) => c.toUpperCase()) ?? "Tabeeb"
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 backdrop-blur-sm px-4 lg:px-6">
-      {/* Mobile menu trigger */}
-      <MobileNav />
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/95 backdrop-blur-sm px-4 lg:px-6">
+      <div className="flex items-center gap-3">
+        {/* Mobile menu trigger */}
+        <MobileNav />
 
-      {/* Page title */}
-      <h1 className="text-lg font-semibold tracking-tight text-foreground">
-        {title}
-      </h1>
+        {/* Page title */}
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">
+          {title}
+        </h1>
+      </div>
+
+      {/* Top-right header actions */}
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+      </div>
     </header>
   )
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import useSWR from "swr";
@@ -16,7 +16,11 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle2,
+  Moon,
+  Sun,
+  Laptop,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +56,13 @@ export default function SettingsPage() {
     { revalidateOnFocus: false }
   );
 
+  const { theme, setTheme } = useTheme();
+  const themeMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
   const [language, setLanguage] = useState("en");
   const [allergies, setAllergies] = useState<string[]>([]);
   const [conditions, setConditions] = useState<string[]>([]);
@@ -74,6 +85,8 @@ export default function SettingsPage() {
     setAllergies(userData.knownAllergies ?? []);
     setConditions(userData.knownConditions ?? []);
   }
+
+
 
   const addAllergy = () => {
     const val = newAllergy.trim();
@@ -252,6 +265,42 @@ export default function SettingsPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             This affects how Tabeeb communicates with you and processes
             multilingual documents.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Appearance / Theme */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Moon className="size-4" aria-hidden="true" />
+            Appearance
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-3">
+            {[
+              { value: "light", label: "Light", icon: Sun },
+              { value: "dark", label: "Dark", icon: Moon },
+              { value: "system", label: "System", icon: Laptop },
+            ].map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTheme(value)}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border-2 p-3 text-center text-sm font-medium transition-colors ${
+                  themeMounted && theme === value
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border hover:border-muted-foreground/50"
+                }`}
+              >
+                <Icon className="size-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Choose your preferred theme across the application or sync with your system settings.
           </p>
         </CardContent>
       </Card>

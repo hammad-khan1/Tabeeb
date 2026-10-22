@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Noto_Nastaliq_Urdu } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { LocaleProvider } from "@/components/providers/locale-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import { getPreferredLocale } from "@/lib/user-preferences";
 import { directionFor } from "@/lib/i18n";
 import "./globals.css";
@@ -51,13 +52,21 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         lang={locale}
         dir={dir}
         className={`${geistSans.variable} ${notoNastaliqUrdu.variable} h-full antialiased`}
+        suppressHydrationWarning
       >
         <body
           className={`min-h-full flex flex-col ${
             locale === "ur" ? "font-urdu-ui" : "font-sans"
           }`}
         >
-          <LocaleProvider locale={locale}>{children}</LocaleProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange={false}
+          >
+            <LocaleProvider locale={locale}>{children}</LocaleProvider>
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
