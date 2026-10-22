@@ -1,6 +1,6 @@
 import {
   pgTable, text, timestamp, uuid, varchar, integer, boolean, jsonb,
-  pgEnum, vector, index, doublePrecision,
+  pgEnum, vector, index, uniqueIndex, doublePrecision, date, type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 export const documentTypeEnum = pgEnum('document_type', [
@@ -198,6 +198,12 @@ export const shareLinks = pgTable('share_links', {
   token: varchar('token', { length: 255 }).notNull().unique(),
   title: varchar('title', { length: 500 }),
   documentIds: jsonb('document_ids').$type<string[]>().notNull(),
+  /**
+   * Set when the link shares a Ramzan plan sheet rather than the history. The two are
+   * different documents with different contents, so /share/<token> branches on this
+   * instead of overloading documentIds.
+   */
+  ramadanPlanId: uuid('ramadan_plan_id').references((): AnyPgColumn => ramadanPlans.id, { onDelete: 'cascade' }),
   expiresAt: timestamp('expires_at').notNull(),
   isActive: boolean('is_active').default(true),
   viewCount: integer('view_count').default(0),
@@ -217,4 +223,109 @@ export const chatMessages = pgTable('chat_messages', {
 }, (table) => [
   index('chat_messages_user_conv_idx').on(table.userId, table.conversationId),
   index('chat_messages_created_idx').on(table.createdAt),
+]);
+
+// ── Ramzan Mode ─────────────────────────────────────────────────────────────
+//
+// Helps a person with diabetes fast safely: the IDF-DAR 2021 fasting risk score, a
+// plan sheet for their doctor, Sehri/Iftar reminders and break-the-fast alerts. No
+// column here holds a dose Tabeeb chose — Ramzan doses come only from a doctor's
+// prescription, linked through doctorPlanDocumentId. See docs/decisions.md.
+
+export const riskBandEnum = pgEnum('ramadan_risk_band', ['low', 'moderate', 'high']);
+
+export const ramadanPlanStatusEnum = pgEnum('ramadan_plan_status', ['draft', 'active', 'completed']);
+
+export const glucoseUnitEnum = pgEnum('glucose_unit', ['mg_dl', 'mmol_l']);
+
+export const glucoseSourceEnum = pgEnum('glucose_source', ['typed', 'voice', 'photo']);
+
+export const glucoseAlertLevelEnum = pgEnum('glucose_alert_level', ['none', 'low', 'high', 'symptom']);
+
+export const ramadanReminderKindEnum = pgEnum('ramadan_reminder_kind', [
+  'medicine', 'glucose_check', 'sehri', 'iftar',
+]);
+
+export const ramadanSlotEnum = pgEnum('ramadan_slot', [
+  'sehri', 'midday', 'pre_iftar', 'iftar', 'post_iftar', 'bedtime',
+]);
+
+/** Where an auto-filled score input was read from, so the patient can see and override it. */
+export interface RamadanProvenance {
+  table: 'lab_results' | 'medications' | 'diagnoses';
+  rowId: string;
+  documentId: string | null;
+  value: string;
+  date: string | null;
+}
+
+/** One line of the risk score, kept with its reason so the doctor sheet can show it. */
+export interface RamadanScoreItem {
+  item: string;
+  points: number;
+  value: string;
+  source: 'record' | 'answer' | 'override';
+  provenance?: RamadanProvenance;
+}
+
+export const ramadanPlans = pgTable('ramadan_plans', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  year: integer('year').notNull(),
+  // Start and end follow moon sighting, so they are the user's to confirm, not computed.
+  ramadanStart: date('ramadan_start').notNull(),
+  ramadanEnd: date('ramadan_end').notNull(),
+  city: varchar('city', { length: 100 }),
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
+  intendsToFast: boolean('intends_to_fast'),
+  // Double precision rather than numeric: scores move in 0.5 steps, which a double
+  // holds exactly, and numeric comes back from the driver as a string.
+  riskScore: doublePrecision('risk_score'),
+  riskBand: riskBandEnum('risk_band'),
+  scoreItems: jsonb('score_items').$type<RamadanScoreItem[]>().default([]),
+  doctorConfirmed: boolean('doctor_confirmed').default(false),
+  doctorPlanDocumentId: uuid('doctor_plan_document_id').references(() => documents.id, { onDelete: 'set null' }),
+  caregiverName: varchar('caregiver_name', { length: 255 }),
+  caregiverPhone: varchar('caregiver_phone', { length: 50 }),
+  status: ramadanPlanStatusEnum('status').default('draft').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  uniqueIndex('ramadan_plans_user_year_idx').on(table.userId, table.year),
+]);
+
+export const glucoseLogs = pgTable('glucose_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  planId: uuid('plan_id').references(() => ramadanPlans.id, { onDelete: 'set null' }),
+  // Null when the entry is symptoms alone: shaking or confusion is a reason to break
+  // the fast whether or not there is a reading.
+  valueMgDl: doublePrecision('value_mg_dl'),
+  originalText: text('original_text'),
+  originalUnit: glucoseUnitEnum('original_unit'),
+  source: glucoseSourceEnum('source').notNull(),
+  symptoms: jsonb('symptoms').$type<string[]>().default([]),
+  loggedAt: timestamp('logged_at').defaultNow().notNull(),
+  alertLevel: glucoseAlertLevelEnum('alert_level').default('none').notNull(),
+  /** When the user pressed "I broke my fast" on the alert for this reading. */
+  fastBrokenAt: timestamp('fast_broken_at'),
+}, (table) => [
+  index('glucose_logs_user_logged_idx').on(table.userId, table.loggedAt.desc()),
+]);
+
+export const ramadanReminders = pgTable('ramadan_reminders', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  planId: uuid('plan_id').notNull().references(() => ramadanPlans.id, { onDelete: 'cascade' }),
+  kind: ramadanReminderKindEnum('kind').notNull(),
+  // Cascade: a reminder for a medicine whose record was deleted would remind the
+  // patient to take something no longer in their record.
+  medicationId: uuid('medication_id').references(() => medications.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 500 }).notNull(),
+  slot: ramadanSlotEnum('slot').notNull(),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('ramadan_reminders_user_plan_idx').on(table.userId, table.planId),
 ]);
