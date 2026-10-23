@@ -12,7 +12,7 @@ import {
   params,
 } from '@/test/route-harness';
 import { resetRateLimits } from '@/lib/rate-limit';
-import { setNotifier } from '@/services/ramadan/notify';
+import { setNotifier } from '@/services/notify';
 import { eq } from 'drizzle-orm';
 
 const describeIfDb = HAS_DATABASE ? describe : describe.skip;

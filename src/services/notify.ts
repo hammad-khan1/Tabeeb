@@ -7,10 +7,15 @@
  * must not stop a low reading from being recorded and shown.
  */
 
-import type { AlertText } from './glucose-rules';
+/** Every message goes out in Urdu script, Roman Urdu and English. */
+export interface AlertText {
+  ur: string;
+  roman: string;
+  en: string;
+}
 
 export interface NotifyMessage {
-  kind: 'glucose_alert' | 'reminder';
+  kind: 'glucose_alert' | 'reminder' | 'pregnancy_danger' | 'visit_reminder';
   recipient: 'patient' | 'caregiver';
   /** Required for a caregiver; the patient is reached through their account. */
   contact?: { name: string | null; phone: string };
@@ -38,7 +43,7 @@ export async function notify(userId: string, message: NotifyMessage): Promise<bo
     return true;
   } catch (error) {
     console.warn(
-      `[ramadan/notify] ${message.kind} to ${message.recipient} failed:`,
+      `[notify] ${message.kind} to ${message.recipient} failed:`,
       error instanceof Error ? error.message : error
     );
     return false;

@@ -50,6 +50,13 @@
       "when": 1792697697928,
       "tag": "0006_ramzan_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792754922170,
+      "tag": "0007_mother_care",
+      "breakpoints": true
     }
   ]
 }

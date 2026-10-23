@@ -3,14 +3,15 @@
 import { useId, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ChevronDown, Moon, SlidersHorizontal } from "lucide-react"
+import { Baby, ChevronDown, Moon, SlidersHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/components/providers/locale-provider"
 import type { TranslationKey } from "@/lib/i18n"
 
-/** Optional modes grouped under "Options" so the main navigation stays short. */
+/** Modes for particular situations, grouped under "Special cases" so the main navigation stays short. */
 const optionItems: Array<{ href: string; key: TranslationKey; icon: React.ElementType }> = [
   { href: "/ramadan", key: "nav.ramadan", icon: Moon },
+  { href: "/mother-care", key: "nav.motherCare", icon: Baby },
 ]
 
 export interface NavLinkProps {
@@ -28,7 +29,7 @@ function PlainLink({ href, className, children }: NavLinkProps) {
 }
 
 /**
- * The "Options" entry and its drop-down. It opens on its own when the current page is
+ * The "Special cases" entry and its drop-down. It opens on its own when the current page is
  * one of its items, so the active page is never hidden inside a closed group.
  * `LinkComponent` lets the mobile sheet close itself when an item is chosen.
  */
@@ -56,7 +57,7 @@ export function NavOptions({ LinkComponent = PlainLink }: { LinkComponent?: Reac
         )}
       >
         <SlidersHorizontal className="size-4 shrink-0" aria-hidden="true" />
-        <span className="flex-1 text-start">{t("nav.options")}</span>
+        <span className="flex-1 text-start">{t("nav.specialCases")}</span>
         <ChevronDown
           className={cn("size-4 shrink-0 transition-transform", expanded && "rotate-180")}
           aria-hidden="true"

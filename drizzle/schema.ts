@@ -204,6 +204,8 @@ export const shareLinks = pgTable('share_links', {
    * instead of overloading documentIds.
    */
   ramadanPlanId: uuid('ramadan_plan_id').references((): AnyPgColumn => ramadanPlans.id, { onDelete: 'cascade' }),
+  /** Set when the link is a pregnancy emergency summary (Mother-care). */
+  pregnancyId: uuid('pregnancy_id').references((): AnyPgColumn => pregnancies.id, { onDelete: 'cascade' }),
   expiresAt: timestamp('expires_at').notNull(),
   isActive: boolean('is_active').default(true),
   viewCount: integer('view_count').default(0),
@@ -332,4 +334,129 @@ export const ramadanReminders = pgTable('ramadan_reminders', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('ramadan_reminders_user_plan_idx').on(table.userId, table.planId),
+]);
+
+// ── Mother-care ─────────────────────────────────────────────────────────────
+//
+// A pregnancy companion: the due date and current week, the WHO 8-contact visit
+// schedule, iron/folic acid and tetanus doses, danger signs that always mean "go to the
+// hospital now", and a one-page emergency summary. The record can be kept on a family
+// member's account, so it reads only documents explicitly linked to the pregnancy,
+// never the rest of that account. See docs/decisions.md.
+
+export const pregnancyStatusEnum = pgEnum('pregnancy_status', ['active', 'delivered', 'ended']);
+
+export const dueDateSourceEnum = pgEnum('pregnancy_due_date_source', ['lmp', 'due_date', 'ultrasound_report']);
+
+export const pregnancyEnteredByEnum = pgEnum('pregnancy_entered_by', ['self', 'family']);
+
+export const supplementKindEnum = pgEnum('supplement_kind', ['iron_folic', 'tt_dose']);
+
+export const pregnancyPhaseEnum = pgEnum('pregnancy_phase', ['antenatal', 'postnatal']);
+
+/** The week-36 checklist. Free text, because the answers are the family's own. */
+export interface BirthPlan {
+  hospital?: string;
+  transport?: string;
+  companion?: string;
+  moneySaved?: boolean;
+  bloodDonor?: string;
+}
+
+export const pregnancies = pgTable('pregnancies', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  /** The account the record lives on, which may be a husband's or another relative's. */
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  motherName: varchar('mother_name', { length: 255 }).notNull(),
+  enteredBy: pregnancyEnteredByEnum('entered_by').notNull(),
+  /** A family member may only start the record once the mother has agreed to it. */
+  consentConfirmed: boolean('consent_confirmed').notNull().default(false),
+  lmpDate: date('lmp_date'),
+  dueDate: date('due_date').notNull(),
+  dueDateSource: dueDateSourceEnum('due_date_source').notNull(),
+  dueDateDocumentId: uuid('due_date_document_id').references(() => documents.id, { onDelete: 'set null' }),
+  bloodGroup: varchar('blood_group', { length: 5 }),
+  pastComplications: jsonb('past_complications').$type<string[]>().default([]),
+  /** Tetanus (TT/Td) doses before this pregnancy; null when she does not know. */
+  ttDosesBefore: integer('tt_doses_before'),
+  birthPlan: jsonb('birth_plan').$type<BirthPlan>().default({}),
+  status: pregnancyStatusEnum('status').notNull().default('active'),
+  deliveredOn: date('delivered_on'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('pregnancies_user_idx').on(table.userId),
+]);
+
+export const ancContacts = pgTable('anc_contacts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  pregnancyId: uuid('pregnancy_id').notNull().references(() => pregnancies.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  contactNumber: integer('contact_number').notNull(),
+  plannedWeek: integer('planned_week').notNull(),
+  doneOn: date('done_on'),
+  /** The visit notes she photographed, filed under this visit. */
+  documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  uniqueIndex('anc_contacts_pregnancy_contact_idx').on(table.pregnancyId, table.contactNumber),
+]);
+
+/** Documents she chose to attach to this pregnancy: blood reports, scans, visit notes. */
+export const pregnancyDocuments = pgTable('pregnancy_documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  pregnancyId: uuid('pregnancy_id').notNull().references(() => pregnancies.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  uniqueIndex('pregnancy_documents_pregnancy_document_idx').on(table.pregnancyId, table.documentId),
+]);
+
+export const supplementLogs = pgTable('supplement_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  pregnancyId: uuid('pregnancy_id').notNull().references(() => pregnancies.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: supplementKindEnum('kind').notNull(),
+  takenOn: date('taken_on').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  // One iron tablet log per day; a second tap the same day changes nothing.
+  uniqueIndex('supplement_logs_pregnancy_kind_day_idx').on(table.pregnancyId, table.kind, table.takenOn),
+]);
+
+export const bpReadings = pgTable('bp_readings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  pregnancyId: uuid('pregnancy_id').notNull().references(() => pregnancies.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  systolic: integer('systolic').notNull(),
+  diastolic: integer('diastolic').notNull(),
+  measuredAt: timestamp('measured_at').defaultNow().notNull(),
+}, (table) => [
+  index('bp_readings_pregnancy_measured_idx').on(table.pregnancyId, table.measuredAt.desc()),
+]);
+
+/** Family members she chose to keep informed. She can change or remove any of them. */
+export const pregnancyCaregivers = pgTable('pregnancy_caregivers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  pregnancyId: uuid('pregnancy_id').notNull().references(() => pregnancies.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  relation: varchar('relation', { length: 50 }),
+  phone: varchar('phone', { length: 50 }).notNull(),
+  receivesReminders: boolean('receives_reminders').notNull().default(true),
+  receivesAlerts: boolean('receives_alerts').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const dangerEvents = pgTable('danger_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  pregnancyId: uuid('pregnancy_id').notNull().references(() => pregnancies.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id', { length: 255 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  sign: varchar('sign', { length: 50 }).notNull(),
+  phase: pregnancyPhaseEnum('phase').notNull(),
+  caregiversNotified: integer('caregivers_notified').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('danger_events_pregnancy_idx').on(table.pregnancyId, table.createdAt.desc()),
 ]);

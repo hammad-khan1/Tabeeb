@@ -3,6 +3,7 @@
  * deterministic — the thresholds are in constants.ts with their source.
  */
 
+import type { AlertText } from '../notify';
 import {
   BREAK_FAST_ABOVE_MG_DL,
   BREAK_FAST_BELOW_MG_DL,
@@ -49,11 +50,7 @@ export function evaluateReading({ valueMgDl, symptoms }: Reading): AlertLevel {
   return symptoms.length > 0 ? 'symptom' : 'none';
 }
 
-export interface AlertText {
-  ur: string;
-  roman: string;
-  en: string;
-}
+export type { AlertText };
 
 export interface AlertMessage {
   action: AlertText;

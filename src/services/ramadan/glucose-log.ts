@@ -9,7 +9,7 @@ import { ApiError, notFound } from '@/lib/api-error';
 import { glucoseLogs } from '../../../drizzle/schema';
 import { parseGlucose, readingFromNumber, type GlucoseParseResult, type ReadingExtractor } from './glucose-parse';
 import { alertMessage, evaluateReading, type AlertLevel, type AlertMessage, type GlucoseUnit, type Symptom } from './glucose-rules';
-import { notify } from './notify';
+import { notify } from '../notify';
 import type { RamadanPlan } from './plan';
 
 export interface GlucoseLogInput {
