@@ -19,6 +19,7 @@ Explore how Tabeeb transforms scattered medical records into an organized, searc
 
 - [Core Features](#core-features)
 - [Ramzan Mode](#ramzan-mode)
+- [Mother-care](#mother-care)
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -47,6 +48,7 @@ Explore how Tabeeb transforms scattered medical records into an organized, searc
 - **Voice entries** — record a voice note, transcribed (Whisper via Groq) and structured into a document-like entry.
 - **Shareable history** — generate expiring, read-only share links summarizing a user's medical history (e.g., for a new doctor).
 - **Bilingual UI** — English and Urdu (Noto Nastaliq Urdu font) support baked into fonts/layout and language-aware summarization.
+- **Mother-care** — a pregnancy companion: the visit calendar, iron and tetanus tracking, Urdu danger signs that always say "go to the hospital now", family alerts and an emergency QR summary. See [Mother-care](#mother-care).
 - **Ramzan Mode** — helps a person with diabetes fast more safely during Ramadan: a fasting risk check, a one-page sheet for their doctor, Sehri/Iftar reminders and Urdu "break your fast now" alerts. See [Ramzan Mode](#ramzan-mode).
 
 ## Ramzan Mode
@@ -106,6 +108,71 @@ To try it locally: `npx tsx scripts/seed-ramzan-demo.ts --with-plan` creates a d
 patient (type 2 diabetes for 12 years, on glibenclamide and metformin, HbA1c 9.2%) and
 prints a link to their doctor sheet. Pass `--user <your Clerk user id>` to add the
 demo records to your own account and walk through `/ramadan` signed in.
+
+## Mother-care
+
+Pakistan's Maternal Mortality Survey 2019 recorded 186 maternal deaths per 100,000
+live births; heavy bleeding (41%) and hypertensive disorders such as pre-eclampsia
+(29%) caused 70% of them, and both usually give warning signs first. Only 52% of women
+had four or more antenatal visits, against WHO's recommended eight. Mother-care
+(`/mother-care`, under **Special cases**) is built so that a family recognises the
+danger in time and goes to the hospital.
+
+1. **Start the pregnancy.** Enter the first day of the last period or the due date,
+   or let Tabeeb read the due date (EDD) from an uploaded ultrasound report — a plain
+   pattern match, confirmed by the family. Tabeeb works out the current week.
+2. **Check-ups.** WHO's 8-contact schedule (by 12 weeks, then 20, 26, 30, 34, 36, 38
+   and 40), each shown as done, due, upcoming or missed, with photographed visit notes
+   filed under the visit. A reminder names her for whoever arranges transport:
+   *"Kal Fatima ka 30 hafte ka checkup hai."*
+3. **Tablets and injections.** A daily *"Goli li?"* tap for iron and folic acid with
+   a running count, tetanus (TT/Td) doses due from her history, and Hb from her
+   attached blood reports, flagged when it falls at each of three tests.
+4. **Danger signs.** A large picture screen of eight signs in Urdu, Roman Urdu and
+   English — bleeding, severe headache or blurred vision or swelling, fits, high fever,
+   severe stomach pain, difficulty breathing, the baby moving much less, waters breaking
+   early. Every one says *"Foran hospital jayein"*.
+5. **"Mujhe yeh ho raha hai".** Tapping a sign shows the red hospital screen at once,
+   alerts the family members she chose, and opens her one-page emergency summary
+   (due date, blood group, Hb, BP, past complications, the sign) as a QR code for the
+   emergency doctor, valid for 24 hours.
+6. **Birth preparedness**, from week 34: hospital, transport at night, who goes with
+   her, money set aside, a blood donor arranged in advance.
+7. **After the birth**, the danger signs switch to the six postnatal weeks.
+
+**Her record is hers.** It can live on a husband's or relative's account, so it reads
+only reports attached to the pregnancy, never the rest of that account. A family member
+can only start it after confirming she agreed; she chooses who gets reminders and
+alerts, can remove anyone, and can delete the whole record.
+
+**What it will not do.** It never diagnoses ("this sign can be dangerous", never "you
+have pre-eclampsia"), never grades a danger sign as mild or says to wait, and never
+generates its medical content: the schedule, signs and supplement guidance are fixed
+text from WHO guidance, in `src/services/pregnancy/`.
+
+**Limits**
+
+- The Urdu content needs a doctor's review before release.
+- **Audio is not recorded yet.** The play button stays hidden until the clips exist,
+  recorded once by a real voice and reviewed by a doctor — never a live synthetic
+  voice. Record them as `public/audio/pregnancy/<phase>-<sign>.mp3` and list each in
+  `AUDIO_RECORDED` in `danger-signs.ts`: `antenatal-bleeding`,
+  `antenatal-headache_vision_swelling`, `antenatal-fits`, `antenatal-high_fever`,
+  `antenatal-abdominal_pain`, `antenatal-breathing`, `antenatal-reduced_movement`,
+  `antenatal-waters_breaking`, `postnatal-heavy_bleeding`,
+  `postnatal-headache_vision_swelling`, `postnatal-fits`, `postnatal-fever_weakness`,
+  `postnatal-breathing`, `postnatal-abdominal_pain`, `postnatal-calf_pain`,
+  `postnatal-foul_discharge`.
+- Reminders and family alerts go through `services/notify.ts`, which sends nothing
+  until an SMS or WhatsApp gateway is connected; reminders show in the app meanwhile.
+- The family vault, emergency QR and child vaccination features the specification
+  refers to do not exist yet; Mother-care carries its own family list and emergency
+  link, and the hand-off to child vaccination is not built.
+
+To try it: `npx tsx scripts/seed-mother-care-demo.ts [--user <your Clerk user id>]`
+adds "Ayesha, 28 weeks" to an account, with three visits done, the 30-week visit on a
+Monday, 21 days of iron in a row, falling Hb and her mother-in-law set to receive
+alerts.
 
 ## Architecture Overview
 
@@ -263,6 +330,13 @@ Defined in `drizzle/schema.ts` (PostgreSQL, via Drizzle ORM). Key tables:
 | `ramadan_plans` | Ramzan Mode: one plan per user per year — dates, place, intent, the risk answers with their sources, and the linked doctor's prescription |
 | `glucose_logs` | Ramzan Mode: logged readings (stored in mg/dL), symptoms, the alert raised, and when the fast was broken |
 | `ramadan_reminders` | Ramzan Mode: reminders the patient switched off |
+| `pregnancies` | Mother-care: one per pregnancy — due date, consent, blood group, tetanus history, birth plan, status |
+| `anc_contacts` | Mother-care: the eight WHO visits, when each was done, and its visit notes |
+| `pregnancy_documents` | Mother-care: the reports she attached; the only documents Mother-care reads |
+| `supplement_logs` | Mother-care: iron tablets taken and tetanus doses given |
+| `bp_readings` | Mother-care: blood pressure readings |
+| `pregnancy_caregivers` | Mother-care: family members she chose, and whether each gets reminders and alerts |
+| `danger_events` | Mother-care: danger signs she reported, and how many family members were alerted |
 
 Enums: `document_type`, `extraction_status`, `language` (`en`/`ur`/`mixed`), `interaction_severity`.
 
@@ -281,6 +355,10 @@ cp .env.example .env.local
 # apply migrations (creates the pgvector/pg_trgm extensions and the
 # retrieval indexes; `drizzle-kit push` alone does NOT create these)
 npm run db:migrate
+
+# timestamps are stored without a time zone and read as UTC, so a local Postgres must
+# run in UTC (hosted ones such as Neon already do):
+#   psql -c "ALTER DATABASE <your database> SET timezone TO 'UTC';"
 
 # run the dev server
 npm run dev
@@ -319,6 +397,7 @@ npm run db:migrate   # apply pending migrations
 npm run db:studio    # Drizzle Studio
 
 npx tsx scripts/seed-ramzan-demo.ts [--with-plan] [--user <clerk id>]   # Ramzan Mode demo patient
+npx tsx scripts/seed-mother-care-demo.ts [--user <clerk id>]             # Mother-care demo (Ayesha, 28 weeks)
 ```
 
 Migrations are checked in under `drizzle/migrations`. `0000_init.sql` creates the

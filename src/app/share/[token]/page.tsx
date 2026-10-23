@@ -9,6 +9,8 @@ import { getSharedHistory, type SharedHistoryData } from '@/services/history/sha
 import { ApiError } from '@/lib/api-error';
 import { getSharedPlanSheet, type SharedPlanSheet } from '@/services/ramadan/plan-sheet';
 import { PlanSheetView } from '@/components/ramadan/plan-sheet-view';
+import { getSharedEmergencySummary } from '@/services/pregnancy/pregnancy';
+import { EmergencySummaryView } from '@/components/mother-care/emergency-summary-view';
 
 /**
  * Public by design — this page is what a patient hands to a doctor, so it must render
@@ -90,8 +92,9 @@ export default async function SharedRecordPage({
 }) {
   const { token } = await params;
 
-  // A Ramzan plan-sheet link renders its own page. Anything else — including a token
-  // that is neither — falls through to the history share, which reports it unavailable.
+  // Ramzan plan-sheet and pregnancy emergency links render their own pages. Anything
+  // else — including a token that is none of these — falls through to the history
+  // share, which reports it unavailable.
   let planSheet: SharedPlanSheet | null = null;
   let planSheetFailed = false;
   try {
@@ -101,6 +104,19 @@ export default async function SharedRecordPage({
   }
   if (planSheet) return <PlanSheetView shared={planSheet} />;
   if (planSheetFailed) {
+    return <Unavailable message="This link could not be opened. Please try again later." />;
+  }
+
+  // A pregnancy emergency summary, opened from the QR code at the hospital.
+  let emergency: Awaited<ReturnType<typeof getSharedEmergencySummary>> | null = null;
+  let emergencyFailed = false;
+  try {
+    emergency = await getSharedEmergencySummary(token);
+  } catch (error) {
+    emergencyFailed = !(error instanceof ApiError && error.statusCode === 404);
+  }
+  if (emergency) return <EmergencySummaryView shared={emergency} />;
+  if (emergencyFailed) {
     return <Unavailable message="This link could not be opened. Please try again later." />;
   }
 

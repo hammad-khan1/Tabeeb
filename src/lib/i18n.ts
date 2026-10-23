@@ -294,6 +294,163 @@ const STRINGS = {
   'ramadan.alert.recorded': { en: 'Recorded. Take care of yourself.', ur: 'درج ہو گیا۔ اپنا خیال رکھیں۔' },
   'ramadan.alert.caregiverNotified': { en: 'Your family member has been told.', ur: 'آپ کے گھر والوں کو اطلاع دے دی گئی ہے۔' },
   'ramadan.alert.close': { en: 'Close', ur: 'بند کریں' },
+
+  // ── Mother-care ──────────────────────────────────────────────────────────
+  // Danger signs, visit purposes and supplement guidance are fixed content in
+  // services/pregnancy, in all three languages. These are the screen's own words.
+  'mother.title': { en: 'Mother-care', ur: 'ماں کی دیکھ بھال' },
+  'mother.subtitle': { en: 'A pregnancy companion for the whole family', ur: 'پورے خاندان کے لیے حمل کا ساتھی' },
+  'mother.noDiagnosis': {
+    en: 'Tabeeb does not diagnose. It helps you keep visits on time and recognise danger signs early.',
+    ur: 'طبیب تشخیص نہیں کرتا۔ یہ معائنے وقت پر کروانے اور خطرے کی علامات جلد پہچاننے میں مدد کرتا ہے۔',
+  },
+
+  'mother.start.title': { en: 'Start a pregnancy record', ur: 'حمل کا ریکارڈ شروع کریں' },
+  'mother.start.name': { en: "Mother's name", ur: 'ماں کا نام' },
+  'mother.start.who': { en: 'Who is using this?', ur: 'یہ کون استعمال کر رہا ہے؟' },
+  'mother.start.self': { en: 'I am the mother', ur: 'میں ماں ہوں' },
+  'mother.start.family': { en: 'A family member, for her', ur: 'خاندان کا فرد، ان کے لیے' },
+  'mother.start.consent': {
+    en: 'She has agreed to keep her pregnancy record here, and she decides who sees it.',
+    ur: 'انہوں نے اپنا حمل کا ریکارڈ یہاں رکھنے پر رضامندی دی ہے، اور وہی طے کریں گی کہ اسے کون دیکھے۔',
+  },
+  'mother.start.dateMethod': { en: 'Which date do you know?', ur: 'آپ کو کون سی تاریخ معلوم ہے؟' },
+  'mother.start.lmp': { en: 'First day of last period', ur: 'آخری ماہواری کا پہلا دن' },
+  'mother.start.due': { en: 'Due date (from the doctor or scan)', ur: 'متوقع تاریخ (ڈاکٹر یا الٹراساؤنڈ سے)' },
+  'mother.start.report': { en: 'Read it from an ultrasound report', ur: 'الٹراساؤنڈ رپورٹ سے پڑھیں' },
+  'mother.start.chooseReport': { en: 'Choose the uploaded report', ur: 'اپ لوڈ شدہ رپورٹ منتخب کریں' },
+  'mother.start.readReport': { en: 'Find the due date', ur: 'متوقع تاریخ تلاش کریں' },
+  'mother.start.foundDate': { en: 'Found in the report — tap to use it', ur: 'رپورٹ میں ملی — استعمال کے لیے دبائیں' },
+  'mother.start.noDateFound': {
+    en: 'No due date found in that report. Enter it yourself.',
+    ur: 'اس رپورٹ میں متوقع تاریخ نہیں ملی۔ خود درج کریں۔',
+  },
+  'mother.start.ambiguous': {
+    en: 'Check this date: the day and month could be the other way round.',
+    ur: 'یہ تاریخ چیک کریں: دن اور مہینہ الٹ بھی ہو سکتے ہیں۔',
+  },
+  'mother.start.tt': { en: 'Tetanus injections (TT) before this pregnancy', ur: 'اس حمل سے پہلے ٹیٹنس کے ٹیکے' },
+  'mother.start.ttUnknown': { en: "Don't know", ur: 'معلوم نہیں' },
+  'mother.start.bloodGroup': { en: 'Blood group (optional)', ur: 'بلڈ گروپ (اختیاری)' },
+  'mother.start.submit': { en: 'Start', ur: 'شروع کریں' },
+  'mother.start.another': { en: 'Add another pregnancy record', ur: 'ایک اور ریکارڈ شامل کریں' },
+
+  'mother.week': { en: 'Week', ur: 'ہفتہ' },
+  'mother.weeksDays': { en: 'weeks', ur: 'ہفتے' },
+  'mother.days': { en: 'days', ur: 'دن' },
+  'mother.dueDate': { en: 'Due date', ur: 'متوقع تاریخ' },
+  'mother.daysLeft': { en: 'days to go', ur: 'دن باقی' },
+  'mother.postnatal': { en: 'After the birth: the first six weeks', ur: 'پیدائش کے بعد: پہلے چھ ہفتے' },
+  'mother.ended': { en: 'This record is closed.', ur: 'یہ ریکارڈ بند ہے۔' },
+
+  'mother.danger.button': { en: 'Danger signs', ur: 'خطرے کی علامات' },
+  'mother.danger.title': { en: 'Danger signs — go to the hospital now', ur: 'خطرے کی علامات — فوراً ہسپتال جائیں' },
+  'mother.danger.happening': { en: 'This is happening to me', ur: 'مجھے یہ ہو رہا ہے' },
+  'mother.danger.listen': { en: 'Listen', ur: 'سنیں' },
+  'mother.danger.close': { en: 'Close', ur: 'بند کریں' },
+  'mother.hospital.notified': { en: 'family members have been alerted', ur: 'گھر والوں کو اطلاع دے دی گئی' },
+  'mother.hospital.noFamily': {
+    en: 'No family member is set to receive alerts. Call someone now.',
+    ur: 'کسی گھر والے کو اطلاع کے لیے شامل نہیں کیا گیا۔ ابھی کسی کو فون کریں۔',
+  },
+  'mother.hospital.sending': { en: 'Alerting your family…', ur: 'گھر والوں کو اطلاع دی جا رہی ہے…' },
+  'mother.hospital.qr': {
+    en: 'Show this to the doctor at the hospital. It opens her pregnancy summary for 24 hours.',
+    ur: 'یہ ہسپتال میں ڈاکٹر کو دکھائیں۔ اس سے 24 گھنٹے کے لیے حمل کا خلاصہ کھلے گا۔',
+  },
+  'mother.hospital.failed': {
+    en: 'The alert could not be sent. Go to the hospital anyway, and call your family.',
+    ur: 'اطلاع نہیں بھیجی جا سکی۔ پھر بھی ہسپتال جائیں اور گھر والوں کو فون کریں۔',
+  },
+
+  'mother.reminder': { en: 'Reminder', ur: 'یاد دہانی' },
+  'mother.visits.title': { en: 'Check-ups', ur: 'معائنے' },
+  'mother.visits.next': { en: 'Next check-up', ur: 'اگلا معائنہ' },
+  'mother.visits.status.done': { en: 'Done', ur: 'ہو گیا' },
+  'mother.visits.status.due': { en: 'Due now', ur: 'ابھی کروانا ہے' },
+  'mother.visits.status.upcoming': { en: 'Upcoming', ur: 'آنے والا' },
+  'mother.visits.status.missed': { en: 'Missed', ur: 'رہ گیا' },
+  'mother.visits.markDone': { en: 'Mark done', ur: 'ہو گیا' },
+  'mother.visits.undo': { en: 'Undo', ur: 'واپس' },
+  'mother.visits.notes': { en: 'Visit notes', ur: 'معائنے کے نوٹس' },
+  'mother.visits.noNotes': { en: 'No notes filed', ur: 'کوئی نوٹس نہیں' },
+
+  'mother.iron.title': { en: 'Iron and folic acid', ur: 'آئرن اور فولک ایسڈ' },
+  'mother.iron.question': { en: 'Goli li? Did you take today’s tablet?', ur: 'گولی لی؟ کیا آج کی گولی لے لی؟' },
+  'mother.iron.yes': { en: 'Yes, I took it', ur: 'جی ہاں، لے لی' },
+  'mother.iron.taken': { en: 'Taken today', ur: 'آج لے لی' },
+  'mother.iron.streak': { en: 'days in a row', ur: 'دن مسلسل' },
+  'mother.iron.total': { en: 'days in total', ur: 'کل دن' },
+
+  'mother.tt.title': { en: 'Tetanus injection (TT/Td)', ur: 'ٹیٹنس کا ٹیکہ' },
+  'mother.tt.dose': { en: 'Dose', ur: 'خوراک' },
+  'mother.tt.given': { en: 'Given', ur: 'لگ گیا' },
+  'mother.tt.due': { en: 'Due now', ur: 'ابھی لگوانا ہے' },
+  'mother.tt.later': { en: 'Later', ur: 'بعد میں' },
+  'mother.tt.from': { en: 'from', ur: 'سے' },
+  'mother.tt.record': { en: 'Got it today', ur: 'آج لگوا لیا' },
+  'mother.tt.complete': {
+    en: 'Five doses before: she is protected and needs no more.',
+    ur: 'پہلے پانچ خوراکیں لگ چکی ہیں: مزید کی ضرورت نہیں۔',
+  },
+
+  'mother.hb.title': { en: 'Haemoglobin (Hb)', ur: 'ہیموگلوبن (Hb)' },
+  'mother.hb.none': {
+    en: 'Attach her blood reports below to see Hb here.',
+    ur: 'یہاں Hb دیکھنے کے لیے نیچے خون کی رپورٹس منسلک کریں۔',
+  },
+  'mother.hb.falling': {
+    en: 'Hb has fallen at each of the last three tests. Show this to the doctor.',
+    ur: 'پچھلے تین ٹیسٹوں میں Hb ہر بار کم ہوا ہے۔ یہ ڈاکٹر کو دکھائیں۔',
+  },
+
+  'mother.bp.title': { en: 'Blood pressure', ur: 'بلڈ پریشر' },
+  'mother.bp.top': { en: 'Top number', ur: 'اوپر والا نمبر' },
+  'mother.bp.bottom': { en: 'Bottom number', ur: 'نیچے والا نمبر' },
+  'mother.bp.save': { en: 'Save reading', ur: 'ریڈنگ محفوظ کریں' },
+
+  'mother.plan.title': { en: 'Getting ready for the birth', ur: 'پیدائش کی تیاری' },
+  'mother.plan.help': {
+    en: 'Arrange these now. Many emergencies become deadly while the family is still arranging transport or blood.',
+    ur: 'یہ ابھی سے طے کر لیں۔ کئی ہنگامی حالات اس لیے جان لیوا بنتے ہیں کہ خاندان ابھی سواری یا خون کا انتظام کر رہا ہوتا ہے۔',
+  },
+  'mother.plan.hospital': { en: 'Which hospital will she deliver at?', ur: 'ڈیلیوری کس ہسپتال میں ہوگی؟' },
+  'mother.plan.transport': { en: 'How will she get there, even at night?', ur: 'وہاں کیسے پہنچیں گی، رات کو بھی؟' },
+  'mother.plan.companion': { en: 'Who will go with her?', ur: 'ان کے ساتھ کون جائے گا؟' },
+  'mother.plan.money': { en: 'Money set aside', ur: 'پیسے الگ رکھ لیے' },
+  'mother.plan.donor': { en: 'Blood donor arranged in advance', ur: 'خون دینے والا پہلے سے طے' },
+  'mother.plan.save': { en: 'Save', ur: 'محفوظ کریں' },
+
+  'mother.family.title': { en: 'Family to keep informed', ur: 'جن گھر والوں کو بتانا ہے' },
+  'mother.family.help': {
+    en: 'She chooses who gets visit reminders and danger alerts, and can remove anyone.',
+    ur: 'وہی طے کرتی ہیں کہ کسے معائنے کی یاد دہانی اور خطرے کی اطلاع ملے، اور کسی کو بھی ہٹا سکتی ہیں۔',
+  },
+  'mother.family.name': { en: 'Name', ur: 'نام' },
+  'mother.family.relation': { en: 'Relation (e.g. husband)', ur: 'رشتہ (مثلاً شوہر)' },
+  'mother.family.phone': { en: 'Phone number', ur: 'فون نمبر' },
+  'mother.family.add': { en: 'Add', ur: 'شامل کریں' },
+  'mother.family.reminders': { en: 'Visit reminders', ur: 'معائنے کی یاد دہانی' },
+  'mother.family.alerts': { en: 'Danger alerts', ur: 'خطرے کی اطلاع' },
+  'mother.family.remove': { en: 'Remove', ur: 'ہٹائیں' },
+
+  'mother.docs.title': { en: 'Her reports', ur: 'ان کی رپورٹس' },
+  'mother.docs.help': {
+    en: 'Only reports attached here are read for this pregnancy, not the rest of the account.',
+    ur: 'اس حمل کے لیے صرف یہاں منسلک رپورٹس پڑھی جاتی ہیں، اکاؤنٹ کی باقی دستاویزات نہیں۔',
+  },
+  'mother.docs.attach': { en: 'Attach a report', ur: 'رپورٹ منسلک کریں' },
+  'mother.docs.detach': { en: 'Detach', ur: 'الگ کریں' },
+
+  'mother.summary.button': { en: 'Emergency summary (QR)', ur: 'ہنگامی خلاصہ (QR)' },
+  'mother.birth.button': { en: 'The baby is born', ur: 'بچے کی پیدائش ہو گئی' },
+  'mother.birth.date': { en: 'Date of birth', ur: 'تاریخِ پیدائش' },
+  'mother.birth.save': { en: 'Save', ur: 'محفوظ کریں' },
+  'mother.delete': { en: 'Delete this record', ur: 'یہ ریکارڈ حذف کریں' },
+  'mother.deleteConfirm': {
+    en: 'Delete this pregnancy record and everything in it? This cannot be undone.',
+    ur: 'کیا یہ حمل کا ریکارڈ اور اس کی ہر چیز حذف کر دی جائے؟ یہ واپس نہیں ہو سکتا۔',
+  },
 } as const;
 
 export type TranslationKey = keyof typeof STRINGS;

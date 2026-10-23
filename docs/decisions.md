@@ -158,3 +158,33 @@ that follow from the data:
 
 Until then, answers are saved and shown with "points being checked", and no total or
 band is displayed. A partial score would read as lower risk than the patient carries.
+
+## Mother-care keeps her record hers, and its content fixed
+
+**Decision:** Mother-care reads only what was attached to the pregnancy, says "go to
+the hospital now" for every danger sign, and never generates medical content.
+
+- **The record may sit on someone else's account.** In many families the husband
+  keeps the phone, so a pregnancy can be recorded on his account. Reading Hb from the
+  whole account would mix his lab results into hers, so Mother-care reads lab results
+  only from documents attached to the pregnancy (visit notes, linked reports, the
+  ultrasound used for the due date). A family member can only start the record after
+  confirming she agreed; she chooses who receives reminders and alerts, can remove
+  anyone, and can delete the record and everything in it.
+- **No triage.** Every danger sign carries the same instruction. A list that sorted
+  signs into "go now" and "watch and wait" would be a diagnosis by another name, and
+  waiting is exactly how these deaths happen. The hospital screen appears on the tap,
+  before the server answers, so no network delay or rate limit can hold it back.
+- **No generated content.** The schedule (WHO 2016, eight contacts), danger signs
+  (WHO IMPAC), and iron, folic acid and tetanus guidance are fixed text in
+  `src/services/pregnancy/`, in Urdu, Roman Urdu and English, for a doctor to review.
+  The only reading of free text is the due date in an ultrasound report, done by
+  pattern matching and confirmed by the family. Audio will be recorded by a real voice;
+  a synthetic voice mispronouncing a danger sign is worse than no audio.
+- **"Keeps falling" is checked directly.** The shared trend analyzer calls a change
+  under 0.5% of the mean per day "stable", which a pregnancy Hb falling 1.5 g/dL over
+  three months never reaches. Mother-care flags three readings in a row each lower than
+  the last, and says to show the doctor — not that she is anaemic.
+- **The emergency summary is short-lived.** It is created when she taps a danger sign
+  or asks for it, lives 24 hours, and, like the Ramzan plan sheet, is refused as a
+  history share, whose empty document list would otherwise mean "the whole record".
