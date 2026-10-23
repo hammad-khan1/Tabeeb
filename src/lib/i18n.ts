@@ -40,6 +40,7 @@ const STRINGS = {
   'nav.trends': { en: 'Trends', ur: 'رجحانات' },
   'nav.insights': { en: 'Insights', ur: 'بصیرت' },
   'nav.settings': { en: 'Settings', ur: 'ترتیبات' },
+  'nav.options': { en: 'Options', ur: 'اختیارات' },
   'nav.ramadan': { en: 'Ramzan Mode', ur: 'رمضان موڈ' },
 
   // ── Common actions ───────────────────────────────────────────────────────

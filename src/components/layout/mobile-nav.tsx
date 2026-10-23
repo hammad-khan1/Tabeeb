@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   TrendingUp,
   Lightbulb,
-  Moon,
   Settings,
   Menu,
 } from "lucide-react"
@@ -28,6 +27,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useLocale } from "@/components/providers/locale-provider";
 import type { TranslationKey } from "@/lib/i18n";
+import { NavOptions, type NavLinkProps } from "@/components/layout/nav-options";
 
 const navItems: Array<{ href: string; key: TranslationKey; icon: React.ElementType }> = [
   { href: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard },
@@ -37,9 +37,13 @@ const navItems: Array<{ href: string; key: TranslationKey; icon: React.ElementTy
   { href: "/interactions", key: "nav.interactions", icon: ShieldCheck },
   { href: "/trends", key: "nav.trends", icon: TrendingUp },
   { href: "/insights", key: "nav.insights", icon: Lightbulb },
-  { href: "/ramadan", key: "nav.ramadan", icon: Moon },
   { href: "/settings", key: "nav.settings", icon: Settings },
 ]
+
+/** Closes the sheet on navigation, like the main items do. */
+function SheetLink({ href, className, children }: NavLinkProps) {
+  return <SheetClose render={<Link href={href} className={className} />}>{children}</SheetClose>
+}
 
 export function MobileNav() {
   const { t } = useLocale();
@@ -95,6 +99,7 @@ export function MobileNav() {
                 </SheetClose>
               )
             })}
+            <NavOptions LinkComponent={SheetLink} />
           </nav>
         </ScrollArea>
       </SheetContent>
