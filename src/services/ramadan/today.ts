@@ -10,6 +10,7 @@ import { medications } from '../../../drizzle/schema';
 import { recentGlucoseLogs } from './glucose-log';
 import type { RamadanPlan } from './plan';
 import { fastingTimes, localDate } from './prayer-times';
+import { applyReminderSettings } from './reminders';
 import { buildDaySchedule, type ScheduleMedicine } from './schedule';
 
 function nextDay(date: string): string {
@@ -47,6 +48,8 @@ export async function buildToday(userId: string, plan: RamadanPlan, now: Date = 
     inRamadan: date >= plan.ramadanStart && date <= plan.ramadanEnd,
     city: plan.city,
     ...schedule,
+    reminders: await applyReminderSettings(userId, plan.id, schedule.reminders),
+    doctorPlanDocumentId: fromDoctor ? plan.doctorPlanDocumentId : null,
     // For the countdown after Iftar, which runs to tomorrow's Sehri.
     tomorrowSehriEnds: fastingTimes(nextDay(date), location).sehriEnds,
     readings: await recentGlucoseLogs(userId),

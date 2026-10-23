@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DOCUMENT_TYPE_LABELS } from '@/lib/constants';
 import { getSharedHistory, type SharedHistoryData } from '@/services/history/share';
+import { ApiError } from '@/lib/api-error';
+import { getSharedPlanSheet, type SharedPlanSheet } from '@/services/ramadan/plan-sheet';
+import { PlanSheetView } from '@/components/ramadan/plan-sheet-view';
 
 /**
  * Public by design — this page is what a patient hands to a doctor, so it must render
@@ -86,6 +89,20 @@ export default async function SharedRecordPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+
+  // A Ramzan plan-sheet link renders its own page. Anything else — including a token
+  // that is neither — falls through to the history share, which reports it unavailable.
+  let planSheet: SharedPlanSheet | null = null;
+  let planSheetFailed = false;
+  try {
+    planSheet = await getSharedPlanSheet(token);
+  } catch (error) {
+    planSheetFailed = !(error instanceof ApiError && error.statusCode === 404);
+  }
+  if (planSheet) return <PlanSheetView shared={planSheet} />;
+  if (planSheetFailed) {
+    return <Unavailable message="This link could not be opened. Please try again later." />;
+  }
 
   let data: SharedHistoryData;
   try {

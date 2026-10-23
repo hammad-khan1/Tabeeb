@@ -220,6 +220,19 @@ export const glucoseLogUpdateSchema = z.object({
   fastBroken: z.literal(true),
 });
 
+export const reminderToggleSchema = z.object({
+  kind: z.enum(['medicine', 'glucose_check', 'sehri', 'iftar']),
+  slot: z.enum(['sehri', 'midday', 'pre_iftar', 'iftar', 'post_iftar', 'bedtime']),
+  medicationId: z.uuid().nullable().default(null),
+  label: z.string().trim().min(1).max(500),
+  active: z.boolean(),
+});
+
+export const voiceAnswerSchema = z.object({
+  item: z.enum(RISK_ITEM_IDS),
+  transcript: z.string().trim().min(1).max(1000),
+});
+
 export const planShareSchema = z.object({
   expiresInHours: z.coerce.number().int().min(1).max(24 * 30).default(24 * 30),
 });

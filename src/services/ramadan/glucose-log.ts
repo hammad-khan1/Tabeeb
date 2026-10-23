@@ -47,13 +47,17 @@ export async function logGlucose(
   userId: string,
   plan: RamadanPlan | null,
   input: GlucoseLogInput,
-  extract?: ReadingExtractor
+  options: {
+    extract?: ReadingExtractor;
+    /** For values read by a model, such as a meter photo: always ask before storing. */
+    alwaysConfirm?: boolean;
+  } = {}
 ): Promise<GlucoseLogOutcome> {
   let reading: GlucoseParseResult | null = null;
   if (input.value !== undefined && input.unit !== undefined) {
     reading = readingFromNumber(input.value, input.unit);
   } else if (input.text) {
-    reading = await parseGlucose(input.text, extract);
+    reading = await parseGlucose(input.text, options.extract);
   }
 
   if (reading && !reading.ok && input.symptoms.length === 0) {
@@ -64,7 +68,7 @@ export async function logGlucose(
   const parsed = reading?.ok ? reading : null;
   const level = evaluateReading({ valueMgDl: parsed?.valueMgDl ?? null, symptoms: input.symptoms });
 
-  if (parsed?.needsConfirmation && !input.confirmed) {
+  if (parsed && (parsed.needsConfirmation || options.alwaysConfirm) && !input.confirmed) {
     return { status: 'needs_confirmation', reading: parsed, provisionalAlert: alertMessage(level) };
   }
 

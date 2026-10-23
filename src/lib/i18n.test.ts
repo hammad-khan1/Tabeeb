@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { RISK_ITEMS } from '@/services/ramadan/constants';
 import {
+  hasUrduRiskLabel,
+  riskLabel,
   toLocale,
   directionFor,
   translate,
@@ -78,5 +81,20 @@ describe('createTranslator', () => {
   it('binds a locale', () => {
     expect(createTranslator('ur')('nav.settings')).toBe('ترتیبات');
     expect(createTranslator('en')('nav.settings')).toBe('Settings');
+  });
+});
+
+describe('Ramzan risk labels', () => {
+  it('has Urdu for every risk item and option', () => {
+    const missing = RISK_ITEMS.flatMap((item) => [
+      ...(hasUrduRiskLabel(item.id) ? [] : [item.id]),
+      ...item.options.filter((option) => !hasUrduRiskLabel(item.id, option.id)).map((option) => `${item.id}.${option.id}`),
+    ]);
+    expect(missing).toEqual([]);
+  });
+
+  it('uses the constants label in English', () => {
+    expect(riskLabel('en', 'Pregnancy', 'pregnancy')).toBe('Pregnancy');
+    expect(riskLabel('ur', 'Pregnancy', 'pregnancy')).toBe('حمل');
   });
 });

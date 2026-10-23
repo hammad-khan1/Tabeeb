@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   TrendingUp,
   Lightbulb,
+  Moon,
   Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,7 @@ const navItems: Array<{ href: string; key: TranslationKey; icon: React.ElementTy
   { href: "/interactions", key: "nav.interactions", icon: ShieldCheck },
   { href: "/trends", key: "nav.trends", icon: TrendingUp },
   { href: "/insights", key: "nav.insights", icon: Lightbulb },
+  { href: "/ramadan", key: "nav.ramadan", icon: Moon },
   { href: "/settings", key: "nav.settings", icon: Settings },
 ]
 

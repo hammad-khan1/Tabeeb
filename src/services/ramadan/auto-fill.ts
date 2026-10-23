@@ -371,7 +371,7 @@ function fastingHours(fasting: FastingWindow | null): Outcome {
 
   const hours = Math.floor(fasting.longestFastMinutes / 60);
   const minutes = fasting.longestFastMinutes % 60;
-  const value = `Longest fast ${hours}h ${minutes}m (${fasting.city}, ${fasting.longestFastDate})`;
+  const value = `Longest fast ${hours}h ${minutes}m (${fasting.city})`;
   return {
     item: 'fasting_hours',
     option: fasting.longestFastMinutes >= 16 * 60 ? 'sixteen_or_more' : 'under_sixteen',
