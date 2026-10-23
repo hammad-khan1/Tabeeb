@@ -107,3 +107,54 @@ that remembers. Only real SQL fails that test.
 
 Verified by reintroducing each original bug and confirming the tests fail — see
 `src/test/route-harness.ts`.
+
+## Ramzan Mode never sets a dose, and its score is plain code
+
+**Decision:** Tabeeb reports, reminds and alerts. The doctor decides the Ramzan doses.
+
+Ramadan dose changes are where fasting harm comes from: a once-daily sulfonylurea moved
+to Sehri is the classic cause of an afternoon hypoglycaemia. Generating or suggesting a
+dose would be the same failure as the X-ray and interaction features above — fluent
+medical output with nothing behind it. So:
+
+- Medicines are only put on the Sehri/Iftar clock from a prescription the patient
+  links as their doctor's Ramzan plan, and only at times that prescription names
+  (Sehri, Iftar, night). A morning or afternoon dose on it is flagged, not moved.
+  Without one, every medicine is listed for the doctor and none is timed.
+- The plan sheet shows medicines exactly as recorded and states that no dose was
+  changed or suggested.
+
+**The score is deterministic.** The IDF-DAR 2021 score, its bands, the break-the-fast
+thresholds, the mmol/L conversion and the schedule are code with tests. A model is used
+for three things only, each turning the patient's own words into a value they then
+confirm: a reading the deterministic parser cannot read, a glucometer photo, and a
+spoken answer to a risk question (chosen only from that question's options).
+
+**Absence is not a "no".** Auto-fill never answers an item with its zero-point option
+from a record that simply lacks the information: no heart disease in the record is a
+missing page, not a healthy heart. Only answers the record states outright are filled;
+everything else is asked, with what the record does say shown as a hint. Some limits
+that follow from the data:
+
+- eGFR is not computed from creatinine — that needs age and sex, which the record lacks.
+- Diabetes type is read from the document's own words. The condition linker files a
+  bare "DM" under type 2, which is fine for a history page and not for a score.
+- The earliest diabetes diagnosis can prove "10 years or more", never "less than 10".
+- HbA1c older than six months and eGFR older than a year are hints, not answers. These
+  windows are app choices, not guideline values.
+- Treatment is classified from a curated list of generic and Pakistani brand names.
+  A name it does not know turns the item into a question; the extractor's
+  model-filled generic name is not trusted on its own.
+
+**What still needs clinical verification** (each is `TODO(verify)` in
+`src/services/ramadan/constants.ts`, and `constants.test.ts` fails until it is filled):
+
+- The points for every item except the confirmed treatment points (glibenclamide 1;
+  gliclazide/MR, glimepiride, repaglinide 0.5; basal insulin 1.5; other 0), and the
+  option wording, which was written from memory of the 2021 table.
+- How a patient on two scored treatments is scored.
+- Which band owns an HbA1c or eGFR value exactly on an edge.
+- Whether the "fasting hours" item belongs in the 2021 table at all.
+
+Until then, answers are saved and shown with "points being checked", and no total or
+band is displayed. A partial score would read as lower risk than the patient carries.

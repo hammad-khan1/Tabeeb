@@ -18,6 +18,7 @@ Explore how Tabeeb transforms scattered medical records into an organized, searc
 ## Table of Contents
 
 - [Core Features](#core-features)
+- [Ramzan Mode](#ramzan-mode)
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -46,6 +47,65 @@ Explore how Tabeeb transforms scattered medical records into an organized, searc
 - **Voice entries** — record a voice note, transcribed (Whisper via Groq) and structured into a document-like entry.
 - **Shareable history** — generate expiring, read-only share links summarizing a user's medical history (e.g., for a new doctor).
 - **Bilingual UI** — English and Urdu (Noto Nastaliq Urdu font) support baked into fonts/layout and language-aware summarization.
+- **Ramzan Mode** — helps a person with diabetes fast more safely during Ramadan: a fasting risk check, a one-page sheet for their doctor, Sehri/Iftar reminders and Urdu "break your fast now" alerts. See [Ramzan Mode](#ramzan-mode).
+
+## Ramzan Mode
+
+Most people with type 2 diabetes fast in Ramadan — 78.7% for at least 15 days across
+13 countries in the EPIDIAR study — many against medical advice, and severe
+hypoglycaemia rises several-fold during the month. Ramzan Mode (`/ramadan`) supports the
+patient and their doctor from a few weeks before Ramadan until Eid:
+
+1. **Opt in.** The patient says whether they plan to fast, chooses a city (or shares
+   their location) and confirms the dates, which are pre-filled as an estimate because
+   Ramadan begins on moon sighting. They can name a family member to alert.
+2. **Fasting risk check.** The IDF-DAR 2021 risk score. Items the record answers
+   outright are filled from it — HbA1c, the treatment, diabetes type and duration,
+   kidney function, fasting hours — each shown with where it came from (table, row,
+   document, value, date) and open to correction. Everything else is asked one
+   question per screen, by tap or by voice.
+3. **Plan sheet for the doctor.** An expiring link to a printable one-page sheet: the
+   score with a source for every point, current medicines as recorded, recent HbA1c and
+   the last two weeks of logged glucose. The doctor sets the Ramzan doses; the patient
+   uploads that prescription and links it to the plan.
+4. **Roza-clock reminders.** Sehri and Iftar times for the patient's place (computed
+   offline, Karachi method, Hanafi Asr), glucose-check prompts at mid-day, two hours
+   before Iftar and two hours after, and medicine reminders from the doctor's Ramzan
+   prescription. Any reminder can be switched off.
+5. **Break-the-fast alerts.** Each reading — typed, spoken ("sugar baasath hai"),
+   or read from a photo of the glucometer — is checked against fixed thresholds: below
+   70 mg/dL, above 300 mg/dL, or symptoms. An alert fills the screen in Urdu first, with
+   English below, says that breaking the fast for health is permitted, and records when
+   the patient breaks the fast.
+
+**What it will not do**
+
+- **Change or suggest a dose.** Without the doctor's Ramzan prescription, current
+  medicines are listed under "Ask your doctor to adjust these for Ramzan" and given no
+  Ramzan time. Even on the doctor's plan, a dose written for the morning or afternoon is
+  flagged rather than placed, because it falls inside the fast.
+- **Use a model for any medical number.** The score, bands, thresholds, unit
+  conversion and schedule are deterministic code with unit tests. A model only turns a
+  spoken or photographed answer into a value, and the patient confirms it first.
+- **Give a religious ruling.** The result is labelled as medical guidance; the decision
+  to fast stays with the patient, their doctor and their scholar.
+
+**Limits**
+
+- Most IDF-DAR score values are deliberately left empty (`TODO(verify)` in
+  `src/services/ramadan/constants.ts`) until a clinician copies them from the
+  guideline's table. Until then answers are saved but **no total or band is shown**,
+  and `constants.test.ts` fails on purpose.
+- The Urdu alert wording and the Pakistani brand list in `drug-classes.ts` need review
+  by a doctor and a pharmacist before real patients use this.
+- Reminders are in-app only. `services/ramadan/notify.ts` is the hook for WhatsApp,
+  SMS or web push; the default sends nothing.
+- The 2027 and 2028 dates are estimates, and there is no end-of-Ramadan (Eid) summary yet.
+
+To try it locally: `npx tsx scripts/seed-ramzan-demo.ts --with-plan` creates a demo
+patient (type 2 diabetes for 12 years, on glibenclamide and metformin, HbA1c 9.2%) and
+prints a link to their doctor sheet. Pass `--user <your Clerk user id>` to add the
+demo records to your own account and walk through `/ramadan` signed in.
 
 ## Architecture Overview
 
@@ -200,6 +260,9 @@ Defined in `drizzle/schema.ts` (PostgreSQL, via Drizzle ORM). Key tables:
 | `health_insights` | Generated insight digests |
 | `share_links` | Expiring tokens for shareable read-only history views |
 | `chat_messages` | RAG chat conversation history, with cited source documents |
+| `ramadan_plans` | Ramzan Mode: one plan per user per year — dates, place, intent, the risk answers with their sources, and the linked doctor's prescription |
+| `glucose_logs` | Ramzan Mode: logged readings (stored in mg/dL), symptoms, the alert raised, and when the fast was broken |
+| `ramadan_reminders` | Ramzan Mode: reminders the patient switched off |
 
 Enums: `document_type`, `extraction_status`, `language` (`en`/`ur`/`mixed`), `interaction_severity`.
 
@@ -254,6 +317,8 @@ npm run test:watch   # Vitest in watch mode
 npm run db:generate  # generate a migration from drizzle/schema.ts
 npm run db:migrate   # apply pending migrations
 npm run db:studio    # Drizzle Studio
+
+npx tsx scripts/seed-ramzan-demo.ts [--with-plan] [--user <clerk id>]   # Ramzan Mode demo patient
 ```
 
 Migrations are checked in under `drizzle/migrations`. `0000_init.sql` creates the
