@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ironSummary, ttPlan } from './supplements';
+import { hbKeepsFalling, ironSummary, ttPlan } from './supplements';
 
 describe('ironSummary', () => {
   it('counts the run of days up to today', () => {
@@ -61,5 +61,18 @@ describe('ttPlan', () => {
     expect(ttPlan(1, ['2026-08-01'], TODAY)).toEqual([
       { number: 2, status: 'given', givenOn: '2026-08-01', earliest: null },
     ]);
+  });
+});
+
+describe('hbKeepsFalling', () => {
+  it('flags three readings each lower than the last', () => {
+    expect(hbKeepsFalling([11.6, 10.9, 10.1])).toBe(true);
+    expect(hbKeepsFalling([12.5, 11.6, 10.9, 10.1])).toBe(true);
+  });
+
+  it('does not flag a recovery, a plateau or too few readings', () => {
+    expect(hbKeepsFalling([11.6, 10.1, 10.9])).toBe(false);
+    expect(hbKeepsFalling([11.0, 10.5, 10.5])).toBe(false);
+    expect(hbKeepsFalling([11.0, 10.5])).toBe(false);
   });
 });

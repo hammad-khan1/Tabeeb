@@ -58,6 +58,15 @@ export const LIMITS = {
   /** A glucose log can fall back to a model call to read the reading. */
   glucoseLog: { limit: 60, windowMs: 60 * 60 * 1000 },
 
+  /** Mother-care writes: visits, tablets, readings, family. */
+  pregnancy: { limit: 200, windowMs: 60 * 60 * 1000 },
+
+  /**
+   * "Mujhe yeh ho raha hai". Generous, and the screen shows the hospital instruction
+   * before the request returns, so a limit here can never hide it.
+   */
+  pregnancyDanger: { limit: 30, windowMs: 60 * 60 * 1000 },
+
   /** Writes to the profile that is injected into the chat prompt. */
   settings: { limit: 60, windowMs: 60 * 60 * 1000 },
 

@@ -101,3 +101,16 @@ export function ttPlan(dosesBefore: number | null, givenThisPregnancy: readonly 
     return { number, status, givenOn: null, earliest };
   });
 }
+
+// ── Haemoglobin ─────────────────────────────────────────────────────────────
+
+/**
+ * "Keeps falling": each of the last three readings lower than the one before. The
+ * shared trend analyzer calls a change under 0.5% of the mean per day "stable", which a
+ * pregnancy Hb sliding 1.5 g/dL over three months never reaches, so this is checked
+ * directly. It flags a pattern to show the doctor; it does not say she is anaemic.
+ */
+export function hbKeepsFalling(readingsOldestFirst: readonly number[]): boolean {
+  const last = readingsOldestFirst.slice(-3);
+  return last.length === 3 && last[1] < last[0] && last[2] < last[1];
+}

@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { getDb } from '@/lib/db';
 import { appUrl } from '@/lib/env';
 import { ApiError, notFound } from '@/lib/api-error';
-import { shareLinks, documents, ramadanPlans } from '../../../drizzle/schema';
+import { shareLinks, documents, ramadanPlans, pregnancies } from '../../../drizzle/schema';
 import { getMedicalHistorySummary, type MedicalHistorySummary } from './summarizer';
 
 interface CreateShareLinkOptions {
@@ -12,6 +12,8 @@ interface CreateShareLinkOptions {
   expiresInHours?: number;
   /** Shares a Ramzan plan sheet instead of the history. */
   ramadanPlanId?: string;
+  /** Shares a pregnancy emergency summary instead of the history. */
+  pregnancyId?: string;
 }
 
 interface ShareLinkResult {
@@ -41,7 +43,16 @@ export async function createShareLink(
   userId: string,
   options: CreateShareLinkOptions = {}
 ): Promise<ShareLinkResult> {
-  const { title, documentIds = [], expiresInHours = 168, ramadanPlanId } = options;
+  const { title, documentIds = [], expiresInHours = 168, ramadanPlanId, pregnancyId } = options;
+
+  if (pregnancyId) {
+    const [pregnancy] = await getDb()
+      .select({ id: pregnancies.id })
+      .from(pregnancies)
+      .where(and(eq(pregnancies.userId, userId), eq(pregnancies.id, pregnancyId)))
+      .limit(1);
+    if (!pregnancy) throw notFound('Pregnancy record not found.');
+  }
 
   if (ramadanPlanId) {
     const [plan] = await getDb()
@@ -76,6 +87,7 @@ export async function createShareLink(
     title: title ?? null,
     documentIds: ownedIds,
     ramadanPlanId: ramadanPlanId ?? null,
+    pregnancyId: pregnancyId ?? null,
     expiresAt,
   });
 
@@ -98,9 +110,11 @@ export async function getSharedHistory(token: string): Promise<SharedHistoryData
         eq(shareLinks.token, token),
         eq(shareLinks.isActive, true),
         sql`${shareLinks.expiresAt} > now()`,
-        // A plan-sheet link has no documentIds, which below means "the whole record".
-        // Served here, it would hand the doctor everything instead of one page.
-        isNull(shareLinks.ramadanPlanId)
+        // Plan-sheet and emergency-summary links have no documentIds, which below means
+        // "the whole record". Served here, they would hand over everything instead of
+        // one page.
+        isNull(shareLinks.ramadanPlanId),
+        isNull(shareLinks.pregnancyId)
       )
     )
     .returning();
@@ -137,7 +151,7 @@ export async function listShareLinks(userId: string) {
     .from(shareLinks)
     // Plan-sheet links are listed with the Ramzan plan, not as history shares that
     // would read as "whole record".
-    .where(and(eq(shareLinks.userId, userId), isNull(shareLinks.ramadanPlanId)))
+    .where(and(eq(shareLinks.userId, userId), isNull(shareLinks.ramadanPlanId), isNull(shareLinks.pregnancyId)))
     .orderBy(desc(shareLinks.createdAt))
     .limit(100);
 

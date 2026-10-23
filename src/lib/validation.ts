@@ -237,6 +237,86 @@ export const planShareSchema = z.object({
   expiresInHours: z.coerce.number().int().min(1).max(24 * 30).default(24 * 30),
 });
 
+// ── Mother-care ─────────────────────────────────────────────────────────────
+
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+const pregnancyText = z.string().trim().min(1).max(200);
+const phoneNumber = z.string().trim().regex(/^\+?[0-9][0-9 -]{6,19}$/, 'must be a phone number');
+
+export const createPregnancySchema = z
+  .object({
+    motherName: z.string().trim().min(1).max(255),
+    enteredBy: z.enum(['self', 'family']),
+    consentConfirmed: z.boolean().default(false),
+    lmpDate: calendarDay.optional(),
+    dueDate: calendarDay.optional(),
+    dueDateDocumentId: z.uuid().optional(),
+    bloodGroup: z.enum(BLOOD_GROUPS).nullish(),
+    ttDosesBefore: z.number().int().min(0).max(5).nullish(),
+    pastComplications: z.array(pregnancyText).max(20).default([]),
+  })
+  .refine((value) => Boolean(value.lmpDate) !== Boolean(value.dueDate), 'Send either lmpDate or dueDate');
+
+export const updatePregnancySchema = z
+  .object({
+    bloodGroup: z.enum(BLOOD_GROUPS).nullable().optional(),
+    ttDosesBefore: z.number().int().min(0).max(5).nullable().optional(),
+    pastComplications: z.array(pregnancyText).max(20).optional(),
+    birthPlan: z
+      .object({
+        hospital: z.string().trim().max(200).optional(),
+        transport: z.string().trim().max(200).optional(),
+        companion: z.string().trim().max(200).optional(),
+        moneySaved: z.boolean().optional(),
+        bloodDonor: z.string().trim().max(200).optional(),
+      })
+      .optional(),
+    deliveredOn: calendarDay.optional(),
+    ended: z.literal(true).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'No changes provided');
+
+export const ancContactUpdateSchema = z
+  .object({
+    contactNumber: z.number().int().min(1).max(8),
+    doneOn: calendarDay.nullable().optional(),
+    documentId: z.uuid().nullable().optional(),
+  })
+  .refine((value) => value.doneOn !== undefined || value.documentId !== undefined, 'No changes provided');
+
+export const pregnancyDocumentSchema = z.object({ documentId: z.uuid() });
+
+export const supplementLogSchema = z.object({
+  kind: z.enum(['iron_folic', 'tt_dose']),
+  day: calendarDay,
+});
+
+export const bpReadingSchema = z.object({
+  systolic: z.number().int().min(60).max(260),
+  diastolic: z.number().int().min(30).max(180),
+});
+
+export const caregiverSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  relation: z.string().trim().max(50).nullish(),
+  phone: phoneNumber,
+  receivesReminders: z.boolean().default(true),
+  receivesAlerts: z.boolean().default(true),
+});
+
+export const caregiverUpdateSchema = z
+  .object({
+    caregiverId: z.uuid(),
+    name: z.string().trim().min(1).max(255).optional(),
+    relation: z.string().trim().max(50).nullable().optional(),
+    phone: phoneNumber.optional(),
+    receivesReminders: z.boolean().optional(),
+    receivesAlerts: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 1, 'No changes provided');
+
+export const dangerSignSchema = z.object({ sign: z.string().trim().min(1).max(50) });
+
 export const uuidParamSchema = z.uuid('Invalid id');
 
 /** Parses, or throws an ApiError carrying the first readable message. */
