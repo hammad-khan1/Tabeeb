@@ -43,6 +43,13 @@
       "when": 1788705282322,
       "tag": "0005_rainy_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792086810976,
+      "tag": "0006_robust_susan_delgado",
+      "breakpoints": true
     }
   ]
 }

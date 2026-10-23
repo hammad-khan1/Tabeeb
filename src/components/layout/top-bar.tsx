@@ -14,6 +14,7 @@ const routeTitles: Record<string, TranslationKey> = {
   "/documents/upload": "action.upload",
   "/chat": "nav.chat",
   "/history": "nav.history",
+  "/briefing": "nav.briefing",
   "/interactions": "nav.interactions",
   "/trends": "nav.trends",
   "/insights": "nav.insights",
